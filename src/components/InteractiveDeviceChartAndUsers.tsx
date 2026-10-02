@@ -22,7 +22,10 @@ import {
   Wifi,
   Sparkles,
   Layers,
-  ArrowUpDown
+  ArrowUpDown,
+  Volume2,
+  Zap,
+  Gauge
 } from 'lucide-react';
 import { SensorDevice, UserProfile, UserRole } from '../types';
 
@@ -49,8 +52,9 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
 }) => {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<'todos' | UserRole>('todos');
-  const [chartViewMode, setChartViewMode] = useState<'levels' | 'timeline'>('levels');
-  const [selectedSensorMetric, setSelectedSensorMetric] = useState<string>('all');
+  const [chartViewMode, setChartViewMode] = useState<'all_bars' | 'levels' | 'timeline'>('all_bars');
+  const [timelineGroup, setTimelineGroup] = useState<'gases' | 'clima' | 'seguridad' | 'todos'>('gases');
+  const [hoveredSensorId, setHoveredSensorId] = useState<string | null>(null);
 
   // Currently selected device for the chart
   const currentDevice = devices.find(d => d.id === activeDeviceId) || devices[0];
@@ -114,112 +118,248 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
   const onlineDevicesCount = devices.filter(d => d.status !== 'desconectado').length;
 
   // Extract readings for the currently selected device
-  // Raw or metrics
-  const coValue = currentDevice?.rawCO !== undefined ? currentDevice.rawCO : (currentDevice?.metrics?.co || 8.2);
-  const pm25Value = currentDevice?.rawPM25 !== undefined ? currentDevice.rawPM25 : (currentDevice?.metrics?.polvoPM || 22.0);
-  const tempValue = currentDevice?.rawTemp !== undefined ? currentDevice.rawTemp : (currentDevice?.metrics?.temperatura || 22.4);
-  const humValue = currentDevice?.rawHum !== undefined ? currentDevice.rawHum : (currentDevice?.metrics?.humedad || 54.0);
-  const co2Value = currentDevice?.metrics?.co2 || 760;
-  const airFlowValue = currentDevice?.metrics?.flujoAire || 0.85;
-  const ch4Value = currentDevice?.metrics?.ch4 || 0.8;
+  const coValue = currentDevice?.rawCO !== undefined ? currentDevice.rawCO : (currentDevice?.metrics?.co ?? 8.2);
+  const pm25Value = currentDevice?.rawPM25 !== undefined ? currentDevice.rawPM25 : (currentDevice?.metrics?.polvoPM ?? 22.0);
+  const tempValue = currentDevice?.rawTemp !== undefined ? currentDevice.rawTemp : (currentDevice?.metrics?.temperatura ?? 22.4);
+  const humValue = currentDevice?.rawHum !== undefined ? currentDevice.rawHum : (currentDevice?.metrics?.humedad ?? 54.0);
+  const co2Value = currentDevice?.metrics?.co2 ?? 760;
+  const airFlowValue = currentDevice?.metrics?.flujoAire ?? 0.85;
+  const ch4Value = currentDevice?.metrics?.ch4 ?? 0.8;
+  const noiseValue = currentDevice?.metrics?.ruido ?? 74;
+  const o2Value = currentDevice?.metrics?.o2 ?? 20.8;
   const batteryPct = currentDevice?.batteryPct ?? 90;
 
-  // Sensor definitions with safety thresholds according to Chilean Mining Safety Regulation DS 132
-  const sensorMetricsList = [
-    {
-      id: 'co',
-      name: 'Monóxido CO (MQ-2)',
-      unit: 'ppm',
-      value: Number(coValue.toFixed(1)),
-      safeMax: 50,
-      criticalMax: 100,
-      scaleMax: 120,
-      icon: <Flame className="w-4 h-4 text-orange-400" />,
-      color: coValue > 50 ? 'bg-rose-500' : coValue > 25 ? 'bg-amber-400' : 'bg-emerald-400',
-      textColor: coValue > 50 ? 'text-rose-400' : coValue > 25 ? 'text-amber-400' : 'text-emerald-400',
-      status: coValue > 50 ? 'CRÍTICO' : coValue > 25 ? 'ADVERTENCIA' : 'SEGURO',
-      norm: 'DS 132: LPP ≤ 50 ppm'
-    },
-    {
-      id: 'pm25',
-      name: 'Polvo en Suspensión (PM2.5)',
-      unit: 'µg/m³',
-      value: Number(pm25Value.toFixed(1)),
-      safeMax: 50,
-      criticalMax: 150,
-      scaleMax: 200,
-      icon: <Layers className="w-4 h-4 text-amber-300" />,
-      color: pm25Value > 150 ? 'bg-rose-500' : pm25Value > 50 ? 'bg-amber-400' : 'bg-emerald-400',
-      textColor: pm25Value > 150 ? 'text-rose-400' : pm25Value > 50 ? 'text-amber-400' : 'text-emerald-400',
-      status: pm25Value > 150 ? 'CRÍTICO' : pm25Value > 50 ? 'MODERADO' : 'ÓPTIMO',
-      norm: 'DS 132: LPP ≤ 50 µg/m³'
-    },
+  // Complete list of ALL 9 sensors with precise units, limits, and color themes
+  const allSensorBars = [
     {
       id: 'temp',
-      name: 'Temperatura Ambiente (DHT11)',
+      name: 'Temperatura',
+      shortName: 'Temp',
       unit: '°C',
       value: Number(tempValue.toFixed(1)),
       safeMax: 28,
       criticalMax: 32,
-      scaleMax: 45,
+      scaleMax: 40,
       icon: <Thermometer className="w-4 h-4 text-cyan-400" />,
-      color: tempValue > 30 ? 'bg-rose-500' : tempValue > 28 ? 'bg-amber-400' : 'bg-cyan-400',
+      gradient: 'from-cyan-500 to-blue-600',
+      glowColor: 'shadow-cyan-500/30',
+      badgeColor: tempValue > 30 ? 'bg-rose-950 text-rose-300 border-rose-800' : tempValue > 28 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-cyan-950 text-cyan-300 border-cyan-800',
       textColor: tempValue > 30 ? 'text-rose-400' : tempValue > 28 ? 'text-amber-400' : 'text-cyan-400',
-      status: tempValue > 30 ? 'SOBRECALENTAMIENTO' : tempValue > 28 ? 'ALTA' : 'CONFORTABLE',
-      norm: 'Rango estándar 18°C - 28°C'
+      status: tempValue > 30 ? 'Calor' : tempValue > 28 ? 'Alerta' : 'Óptimo',
+      norm: 'DS 132: 18° - 28°C'
     },
     {
       id: 'hum',
-      name: 'Humedad Relativa (DHT11)',
+      name: 'Humedad',
+      shortName: 'Humedad',
       unit: '%',
       value: Number(humValue.toFixed(1)),
       safeMax: 70,
       criticalMax: 85,
       scaleMax: 100,
       icon: <Droplets className="w-4 h-4 text-blue-400" />,
-      color: humValue > 85 ? 'bg-amber-400' : 'bg-blue-400',
+      gradient: 'from-blue-500 to-indigo-600',
+      glowColor: 'shadow-blue-500/30',
+      badgeColor: humValue > 85 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-blue-950 text-blue-300 border-blue-800',
       textColor: humValue > 85 ? 'text-amber-400' : 'text-blue-400',
-      status: humValue > 85 ? 'HUMEDAD ELEVADA' : 'ADECUADA',
-      norm: 'Recomendado 40% - 70%'
+      status: humValue > 85 ? 'Elevada' : 'Normal',
+      norm: 'DS 132: 40% - 70%'
+    },
+    {
+      id: 'co',
+      name: 'Monóxido CO (MQ-2)',
+      shortName: 'CO (MQ2)',
+      unit: 'ppm',
+      value: Number(coValue.toFixed(1)),
+      safeMax: 50,
+      criticalMax: 100,
+      scaleMax: 100,
+      icon: <Flame className="w-4 h-4 text-orange-400" />,
+      gradient: coValue > 50 ? 'from-rose-600 to-red-500' : coValue > 25 ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500',
+      glowColor: coValue > 50 ? 'shadow-rose-500/40' : 'shadow-orange-500/30',
+      badgeColor: coValue > 50 ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse' : coValue > 25 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800',
+      textColor: coValue > 50 ? 'text-rose-400' : coValue > 25 ? 'text-amber-400' : 'text-emerald-400',
+      status: coValue > 50 ? 'Peligro' : coValue > 25 ? 'Alerta' : 'Seguro',
+      norm: 'DS 132: LPP ≤ 50 ppm'
     },
     {
       id: 'co2',
-      name: 'Dióxido de Carbono (CO2)',
+      name: 'Dióxido CO2',
+      shortName: 'CO2',
       unit: 'ppm',
       value: co2Value,
       safeMax: 1000,
       criticalMax: 2000,
-      scaleMax: 2500,
-      icon: <Activity className="w-4 h-4 text-emerald-400" />,
-      color: co2Value > 1500 ? 'bg-rose-500' : co2Value > 1000 ? 'bg-amber-400' : 'bg-emerald-400',
+      scaleMax: 2000,
+      icon: <Wind className="w-4 h-4 text-emerald-400" />,
+      gradient: co2Value > 1500 ? 'from-rose-500 to-red-600' : co2Value > 1000 ? 'from-amber-500 to-yellow-600' : 'from-emerald-500 to-green-600',
+      glowColor: 'shadow-emerald-500/30',
+      badgeColor: co2Value > 1500 ? 'bg-rose-950 text-rose-300 border-rose-800' : co2Value > 1000 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800',
       textColor: co2Value > 1500 ? 'text-rose-400' : co2Value > 1000 ? 'text-amber-400' : 'text-emerald-400',
-      status: co2Value > 1500 ? 'VENTILAR' : co2Value > 1000 ? 'ATENCIÓN' : 'SEGURO',
+      status: co2Value > 1500 ? 'Ventilar' : co2Value > 1000 ? 'Atención' : 'Seguro',
       norm: 'DS 132: LPP ≤ 1000 ppm'
+    },
+    {
+      id: 'pm25',
+      name: 'Polvo en Suspensión',
+      shortName: 'PM2.5',
+      unit: 'µg/m³',
+      value: Number(pm25Value.toFixed(1)),
+      safeMax: 50,
+      criticalMax: 150,
+      scaleMax: 150,
+      icon: <Layers className="w-4 h-4 text-amber-300" />,
+      gradient: pm25Value > 150 ? 'from-rose-500 to-red-600' : pm25Value > 50 ? 'from-amber-500 to-yellow-500' : 'from-cyan-500 to-teal-500',
+      glowColor: 'shadow-amber-500/30',
+      badgeColor: pm25Value > 150 ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse' : pm25Value > 50 ? 'bg-amber-950 text-amber-300 border-amber-800' : 'bg-cyan-950 text-cyan-300 border-cyan-800',
+      textColor: pm25Value > 150 ? 'text-rose-400' : pm25Value > 50 ? 'text-amber-400' : 'text-cyan-400',
+      status: pm25Value > 150 ? 'Crítico' : pm25Value > 50 ? 'Moderado' : 'Óptimo',
+      norm: 'DS 132: LPP ≤ 50 µg/m³'
+    },
+    {
+      id: 'ch4',
+      name: 'Gas Metano (CH4)',
+      shortName: 'CH4',
+      unit: '% LEL',
+      value: Number(ch4Value.toFixed(1)),
+      safeMax: 1.5,
+      criticalMax: 5.0,
+      scaleMax: 5.0,
+      icon: <Zap className="w-4 h-4 text-purple-400" />,
+      gradient: ch4Value > 1.5 ? 'from-rose-600 to-red-600' : 'from-purple-500 to-pink-500',
+      glowColor: 'shadow-purple-500/30',
+      badgeColor: ch4Value > 1.5 ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-purple-950 text-purple-300 border-purple-800',
+      textColor: ch4Value > 1.5 ? 'text-rose-400' : 'text-purple-400',
+      status: ch4Value > 1.5 ? 'Crítico' : 'Seguro',
+      norm: 'DS 132: Máx 1.5% LEL'
     },
     {
       id: 'airFlow',
       name: 'Flujo de Ventilación',
+      shortName: 'Ventilación',
       unit: 'm/s',
-      value: airFlowValue,
+      value: Number(airFlowValue.toFixed(2)),
       safeMax: 2.5,
-      criticalMax: 0.5, // minimum airflow
-      scaleMax: 3.5,
+      criticalMax: 0.5,
+      scaleMax: 3.0,
       icon: <Wind className="w-4 h-4 text-teal-400" />,
-      color: airFlowValue < 0.5 ? 'bg-rose-500' : 'bg-teal-400',
+      gradient: airFlowValue < 0.5 ? 'from-rose-600 to-red-500' : 'from-teal-500 to-emerald-500',
+      glowColor: 'shadow-teal-500/30',
+      badgeColor: airFlowValue < 0.5 ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-teal-950 text-teal-300 border-teal-800',
       textColor: airFlowValue < 0.5 ? 'text-rose-400' : 'text-teal-400',
-      status: airFlowValue < 0.5 ? 'VENTILACIÓN INSUFICIENTE' : 'FLUJO ACTIVO',
+      status: airFlowValue < 0.5 ? 'Bajo' : 'Óptimo',
       norm: 'DS 132: Mínimo 0.5 m/s'
+    },
+    {
+      id: 'noise',
+      name: 'Ruido Acústico',
+      shortName: 'Ruido',
+      unit: 'dB',
+      value: Number(noiseValue.toFixed(0)),
+      safeMax: 82,
+      criticalMax: 90,
+      scaleMax: 110,
+      icon: <Volume2 className="w-4 h-4 text-rose-400" />,
+      gradient: noiseValue > 85 ? 'from-rose-600 to-red-600' : 'from-rose-500 to-amber-500',
+      glowColor: 'shadow-rose-500/30',
+      badgeColor: noiseValue > 85 ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-slate-900 text-slate-300 border-slate-700',
+      textColor: noiseValue > 85 ? 'text-rose-400' : 'text-slate-300',
+      status: noiseValue > 85 ? 'Elevado' : 'Aceptable',
+      norm: 'DS 132: LPP ≤ 82 dB(A)'
+    },
+    {
+      id: 'o2',
+      name: 'Oxígeno (O2)',
+      shortName: 'Oxígeno',
+      unit: '%',
+      value: Number(o2Value.toFixed(1)),
+      safeMax: 21.0,
+      criticalMax: 19.5,
+      scaleMax: 25.0,
+      icon: <Activity className="w-4 h-4 text-emerald-400" />,
+      gradient: o2Value < 19.5 ? 'from-rose-600 to-red-600' : 'from-emerald-400 to-teal-500',
+      glowColor: 'shadow-emerald-500/30',
+      badgeColor: o2Value < 19.5 ? 'bg-rose-950 text-rose-300 border-rose-800 animate-pulse' : 'bg-emerald-950 text-emerald-300 border-emerald-800',
+      textColor: o2Value < 19.5 ? 'text-rose-400' : 'text-emerald-400',
+      status: o2Value < 19.5 ? 'Deficiente' : 'Normal',
+      norm: 'DS 132: Mínimo 19.5% O2'
     }
   ];
 
-  // Simulated chronological readings for timeline mode
+  // Multi-sensor timeline readings for the shift
   const timelineReadings = [
-    { hour: '00:00', co: Math.max(2, coValue - 3), pm25: Math.max(5, pm25Value - 6), temp: tempValue - 1.2 },
-    { hour: '04:00', co: Math.max(3, coValue - 2), pm25: Math.max(8, pm25Value - 4), temp: tempValue - 0.8 },
-    { hour: '08:00', co: coValue + 1, pm25: pm25Value + 2, temp: tempValue + 0.3 },
-    { hour: '12:00', co: coValue + 4, pm25: pm25Value + 8, temp: tempValue + 1.5 },
-    { hour: '16:00', co: coValue + 2, pm25: pm25Value + 4, temp: tempValue + 0.8 },
-    { hour: '20:00', co: coValue, pm25: pm25Value, temp: tempValue },
+    { 
+      hour: '00:00', 
+      temp: tempValue - 1.2, 
+      hum: humValue - 3, 
+      co: Math.max(2, coValue - 3.1), 
+      co2: Math.max(450, co2Value - 60), 
+      pm25: Math.max(5, pm25Value - 6.5),
+      ch4: Math.max(0.1, ch4Value - 0.2),
+      airFlow: airFlowValue + 0.15,
+      noise: noiseValue - 5,
+      o2: 20.9
+    },
+    { 
+      hour: '04:00', 
+      temp: tempValue - 0.8, 
+      hum: humValue - 1, 
+      co: Math.max(3, coValue - 2.0), 
+      co2: Math.max(500, co2Value - 40), 
+      pm25: Math.max(8, pm25Value - 4.0),
+      ch4: Math.max(0.2, ch4Value - 0.1),
+      airFlow: airFlowValue + 0.1,
+      noise: noiseValue - 3,
+      o2: 20.8
+    },
+    { 
+      hour: '08:00', 
+      temp: tempValue + 0.3, 
+      hum: humValue + 2, 
+      co: coValue + 1.2, 
+      co2: co2Value + 50, 
+      pm25: pm25Value + 3.0,
+      ch4: ch4Value + 0.1,
+      airFlow: airFlowValue,
+      noise: noiseValue + 2,
+      o2: 20.7
+    },
+    { 
+      hour: '12:00', 
+      temp: tempValue + 1.5, 
+      hum: humValue + 4, 
+      co: coValue + 3.8, 
+      co2: co2Value + 120, 
+      pm25: pm25Value + 7.5,
+      ch4: ch4Value + 0.3,
+      airFlow: airFlowValue - 0.05,
+      noise: noiseValue + 4,
+      o2: 20.6
+    },
+    { 
+      hour: '16:00', 
+      temp: tempValue + 0.8, 
+      hum: humValue + 1, 
+      co: coValue + 1.5, 
+      co2: co2Value + 60, 
+      pm25: pm25Value + 3.8,
+      ch4: ch4Value + 0.1,
+      airFlow: airFlowValue,
+      noise: noiseValue + 1,
+      o2: 20.8
+    },
+    { 
+      hour: '20:00 (Actual)', 
+      temp: tempValue, 
+      hum: humValue, 
+      co: coValue, 
+      co2: co2Value, 
+      pm25: pm25Value,
+      ch4: ch4Value,
+      airFlow: airFlowValue,
+      noise: noiseValue,
+      o2: o2Value
+    },
   ];
 
   return (
@@ -276,7 +416,7 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
           </div>
         </div>
 
-        {/* 4 Quick Stat Cards (Exact match to the 4 stats widgets in the reference image) */}
+        {/* 4 Quick Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-5 border-t border-slate-800/80">
           
           {/* Card 1: Total Users */}
@@ -351,13 +491,13 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
 
       {/* ==============================================================
           2. TWO-COLUMN INTERACTIVE SECTION:
-             - LEFT: SENSOR LEVELS CHART WITH DEVICE SELECTOR
+             - LEFT: SENSOR LEVELS BAR CHART WITH ALL SENSORS & DEVICE SELECTOR
              - RIGHT: SCROLLABLE SYSTEM USERS LIST
          ============================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* ============================================================
-            COL 1: SENSOR LEVELS CHART WITH DEVICE SELECTOR (7 / 12 cols)
+            COL 1: SENSOR LEVELS BAR CHART (7 / 12 cols)
            ============================================================ */}
         <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
           
@@ -370,19 +510,30 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                    Niveles de Sensores IoT
+                    Gráfico de Barras: Sensores IoT
                     <span className="text-xs font-mono font-normal text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
                       {currentDevice?.code || currentDevice?.id}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Monitoreo en vivo de gases, polvo y confort térmico subterráneo.
+                    Mediciones de todos los sensores (Temperatura, Humedad, CO, CO2, PM2.5, Metano, Flujo, Ruido, O2)
                   </p>
                 </div>
               </div>
 
-              {/* View mode toggle */}
+              {/* 3 View mode toggles */}
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 self-start sm:self-center shrink-0">
+                <button
+                  onClick={() => setChartViewMode('all_bars')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    chartViewMode === 'all_bars' 
+                      ? 'bg-cyan-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Gráfico de barras vertical con todos los sensores medidos"
+                >
+                  Barras de Sensores
+                </button>
                 <button
                   onClick={() => setChartViewMode('levels')}
                   className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
@@ -390,8 +541,9 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
                       ? 'bg-cyan-600 text-white shadow-sm' 
                       : 'text-slate-400 hover:text-white'
                   }`}
+                  title="Indicadores horizontales con límites normativos DS 132"
                 >
-                  Barras de Nivel
+                  Niveles DS 132
                 </button>
                 <button
                   onClick={() => setChartViewMode('timeline')}
@@ -400,6 +552,7 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
                       ? 'bg-cyan-600 text-white shadow-sm' 
                       : 'text-slate-400 hover:text-white'
                   }`}
+                  title="Evolución temporal por turnos"
                 >
                   Tendencia Temporal
                 </button>
@@ -462,11 +615,112 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
               )}
             </div>
 
-            {/* CHART DISPLAY: LEVELS MODE (Dynamic animated sensor bars) */}
+            {/* ========================================================
+                CHART MODE 1: VERTICAL SENSOR BARS CHART (TODOS LOS SENSORES)
+                (Temperatura, Humedad, CO, CO2, PM2.5, Metano, Flujo, Ruido, O2)
+               ======================================================== */}
+            {chartViewMode === 'all_bars' && (
+              <div className="mt-3 bg-slate-950/80 border border-slate-800/90 rounded-2xl p-4 sm:p-5">
+                
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-4 pb-2 border-b border-slate-800">
+                  <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Activity className="w-4 h-4 text-cyan-400" />
+                    Comparativa de Sensores en Vivo ({allSensorBars.length} Variables)
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Nodo: <strong className="text-cyan-300">{currentDevice?.code || currentDevice?.id}</strong>
+                  </span>
+                </div>
+
+                {/* THE 9 VERTICAL SENSOR BARS */}
+                <div className="grid grid-cols-3 sm:grid-cols-9 gap-2 sm:gap-2.5 items-end pt-6 pb-2 min-h-[260px]">
+                  {allSensorBars.map((sensor) => {
+                    // Normalize bar height percentage for clear visual comparison
+                    const pct = Math.min(100, Math.max(14, (sensor.value / sensor.scaleMax) * 100));
+                    const isHovered = hoveredSensorId === sensor.id;
+                    const isAlert = sensor.value > sensor.safeMax;
+
+                    return (
+                      <div 
+                        key={sensor.id} 
+                        className="flex flex-col items-center justify-end h-full group relative cursor-pointer"
+                        onMouseEnter={() => setHoveredSensorId(sensor.id)}
+                        onMouseLeave={() => setHoveredSensorId(null)}
+                      >
+                        {/* Hover Tooltip */}
+                        {isHovered && (
+                          <div className="absolute -top-12 z-20 bg-slate-900 border border-cyan-500/80 text-white text-[10px] py-1 px-2.5 rounded-lg shadow-xl whitespace-nowrap pointer-events-none">
+                            <p className="font-bold text-cyan-300">{sensor.name}</p>
+                            <p className="text-slate-300">{sensor.value} {sensor.unit} · {sensor.norm}</p>
+                          </div>
+                        )}
+
+                        {/* Numerical Value Badge on Top of Bar */}
+                        <div className="mb-2 text-center">
+                          <span className={`text-[11px] sm:text-xs font-mono font-black tabular-nums transition-transform duration-200 block ${sensor.textColor} ${isHovered ? 'scale-110 font-extrabold' : ''}`}>
+                            {sensor.value}
+                          </span>
+                          <span className="text-[9px] text-slate-400 block -mt-0.5 font-mono">
+                            {sensor.unit}
+                          </span>
+                        </div>
+
+                        {/* Bar Pillar Track */}
+                        <div className="w-full max-w-[38px] bg-slate-900/90 rounded-t-xl h-36 flex items-end p-1 border border-slate-800 group-hover:border-slate-700 transition-colors relative overflow-hidden">
+                          {/* Safe limit line indicator */}
+                          <div 
+                            className="absolute left-0 right-0 h-0.5 bg-slate-700/60 z-10 pointer-events-none"
+                            style={{ bottom: `${Math.min(95, (sensor.safeMax / sensor.scaleMax) * 100)}%` }}
+                            title={`Límite seguro: ${sensor.safeMax} ${sensor.unit}`}
+                          />
+
+                          {/* Colored Vertical Bar */}
+                          <div 
+                            className={`w-full rounded-t-lg bg-gradient-to-t ${sensor.gradient} shadow-lg ${sensor.glowColor} transition-all duration-500 group-hover:brightness-125`}
+                            style={{ height: `${pct}%` }}
+                          />
+                        </div>
+
+                        {/* Sensor Bottom Label & Status Badge */}
+                        <div className="mt-2 text-center w-full flex flex-col items-center">
+                          <div className="flex items-center justify-center mb-0.5">
+                            {sensor.icon}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-bold text-slate-300 truncate max-w-full">
+                            {sensor.shortName}
+                          </span>
+                          
+                          {/* Mini Status Pill */}
+                          <span className={`mt-1 text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${sensor.badgeColor}`}>
+                            {sensor.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Subtitle Guide */}
+                <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-[11px] text-slate-400 gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Seguro</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" /> Atención</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> Crítico</span>
+                  </div>
+                  <span className="font-mono text-[10px] text-slate-500">
+                    Línea tenue = Límite normativo seguro DS 132
+                  </span>
+                </div>
+
+              </div>
+            )}
+
+            {/* ========================================================
+                CHART MODE 2: HORIZONTAL LEVELS & DS 132 LIMIT GAUGES
+               ======================================================== */}
             {chartViewMode === 'levels' && (
-              <div className="space-y-3.5 mt-3">
-                {sensorMetricsList.map((metric) => {
-                  // Calculate percentage relative to scale
+              <div className="space-y-3 mt-3">
+                {allSensorBars.map((metric) => {
                   const pct = Math.min(100, Math.max(5, (metric.value / metric.scaleMax) * 100));
                   const isAboveSafe = metric.value > metric.safeMax;
 
@@ -482,11 +736,7 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
                           <span className="text-[10px] text-slate-400 hidden sm:inline">({metric.norm})</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
-                            isAboveSafe 
-                              ? 'bg-amber-950/80 text-amber-300 border-amber-800' 
-                              : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
-                          }`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${metric.badgeColor}`}>
                             {metric.status}
                           </span>
                           <span className={`font-mono font-bold text-sm ${metric.textColor}`}>
@@ -497,15 +747,13 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
 
                       {/* Visual gauge bar */}
                       <div className="relative w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                        {/* Safe limit guide mark */}
                         <div 
                           className="absolute top-0 bottom-0 w-0.5 bg-slate-600 z-10"
                           style={{ left: `${(metric.safeMax / metric.scaleMax) * 100}%` }}
                           title={`Límite seguro: ${metric.safeMax} ${metric.unit}`}
                         />
-                        {/* Dynamic level bar */}
                         <div 
-                          className={`h-full rounded-full transition-all duration-500 ${metric.color}`}
+                          className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${metric.gradient}`}
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -515,40 +763,147 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
               </div>
             )}
 
-            {/* CHART DISPLAY: TIMELINE MODE (Simulated trends over shift) */}
+            {/* ========================================================
+                CHART MODE 3: TIMELINE EVOLUTION WITH ALL SENSOR GROUPS
+               ======================================================== */}
             {chartViewMode === 'timeline' && (
-              <div className="mt-4 bg-slate-950/70 border border-slate-800 rounded-xl p-4">
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-4">
-                  <span className="font-semibold text-slate-200">Evolución en Turno (Monóxido CO & PM2.5)</span>
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" /> CO (ppm)</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-400" /> PM2.5 (µg/m³)</span>
+              <div className="mt-4 bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5">
+                
+                {/* Metric group switcher */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-800">
+                  <span className="font-semibold text-xs sm:text-sm text-slate-200">
+                    Evolución Temporal en el Turno
+                  </span>
+
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px]">
+                    <button
+                      onClick={() => setTimelineGroup('gases')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                        timelineGroup === 'gases' ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      CO & PM2.5
+                    </button>
+                    <button
+                      onClick={() => setTimelineGroup('clima')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                        timelineGroup === 'clima' ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Temp & Humedad
+                    </button>
+                    <button
+                      onClick={() => setTimelineGroup('seguridad')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                        timelineGroup === 'seguridad' ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      CO2, Metano & Ruido
+                    </button>
+                    <button
+                      onClick={() => setTimelineGroup('todos')}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors ${
+                        timelineGroup === 'todos' ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Todos
+                    </button>
                   </div>
                 </div>
 
-                {/* SVG Mini Bar Chart */}
-                <div className="h-44 w-full flex items-end justify-between gap-2 pt-4 px-2">
+                {/* Legend */}
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mb-4 px-1">
+                  {(timelineGroup === 'gases' || timelineGroup === 'todos') && (
+                    <>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Monóxido CO (ppm)</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-400" /> Polvo PM2.5 (µg/m³)</span>
+                    </>
+                  )}
+                  {(timelineGroup === 'clima' || timelineGroup === 'todos') && (
+                    <>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" /> Temp (°C)</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-400" /> Humedad (%)</span>
+                    </>
+                  )}
+                  {(timelineGroup === 'seguridad' || timelineGroup === 'todos') && (
+                    <>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> CO2 (ppm/10)</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Metano CH4 (%)</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-400" /> Ruido (dB)</span>
+                    </>
+                  )}
+                </div>
+
+                {/* Multi-Bar Timeline Chart */}
+                <div className="h-44 w-full flex items-end justify-between gap-2 pt-2 px-1">
                   {timelineReadings.map((reading, index) => {
-                    const coHeight = Math.min(100, Math.max(10, (reading.co / 50) * 100));
-                    const pmHeight = Math.min(100, Math.max(10, (reading.pm25 / 100) * 100));
-                    
                     return (
                       <div key={index} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                        <div className="w-full flex items-end justify-center gap-1 h-32">
+                        <div className="w-full flex items-end justify-center gap-1 h-32 px-0.5">
                           {/* CO Bar */}
-                          <div 
-                            className="w-1/2 max-w-[16px] bg-gradient-to-t from-orange-600 to-orange-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
-                            style={{ height: `${coHeight}%` }}
-                            title={`CO a las ${reading.hour}: ${reading.co.toFixed(1)} ppm`}
-                          />
+                          {(timelineGroup === 'gases' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-orange-600 to-orange-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.co / 50) * 100))}%` }}
+                              title={`CO: ${reading.co.toFixed(1)} ppm`}
+                            />
+                          )}
+
                           {/* PM2.5 Bar */}
-                          <div 
-                            className="w-1/2 max-w-[16px] bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
-                            style={{ height: `${pmHeight}%` }}
-                            title={`PM2.5 a las ${reading.hour}: ${reading.pm25.toFixed(1)} µg/m³`}
-                          />
+                          {(timelineGroup === 'gases' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.pm25 / 100) * 100))}%` }}
+                              title={`PM2.5: ${reading.pm25.toFixed(1)} µg/m³`}
+                            />
+                          )}
+
+                          {/* Temp Bar */}
+                          {(timelineGroup === 'clima' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.temp / 35) * 100))}%` }}
+                              title={`Temp: ${reading.temp.toFixed(1)} °C`}
+                            />
+                          )}
+
+                          {/* Humedad Bar */}
+                          {(timelineGroup === 'clima' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-indigo-600 to-indigo-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.hum / 100) * 100))}%` }}
+                              title={`Humedad: ${reading.hum.toFixed(0)} %`}
+                            />
+                          )}
+
+                          {/* CO2 Bar */}
+                          {(timelineGroup === 'seguridad' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.co2 / 1500) * 100))}%` }}
+                              title={`CO2: ${reading.co2} ppm`}
+                            />
+                          )}
+
+                          {/* Metano CH4 Bar */}
+                          {(timelineGroup === 'seguridad' || timelineGroup === 'todos') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-purple-600 to-purple-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.ch4 / 2) * 100))}%` }}
+                              title={`CH4: ${reading.ch4.toFixed(1)} %`}
+                            />
+                          )}
+
+                          {/* Ruido Bar */}
+                          {(timelineGroup === 'seguridad') && (
+                            <div 
+                              className="flex-1 max-w-[14px] bg-gradient-to-t from-rose-600 to-rose-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                              style={{ height: `${Math.min(100, Math.max(12, (reading.noise / 100) * 100))}%` }}
+                              title={`Ruido: ${reading.noise} dB`}
+                            />
+                          )}
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400">{reading.hour}</span>
+                        <span className="text-[10px] font-mono text-slate-400 text-center">{reading.hour}</span>
                       </div>
                     );
                   })}
@@ -572,7 +927,6 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
 
         {/* ============================================================
             COL 2: SCROLLABLE SYSTEM USERS LIST BOX (5 / 12 cols)
-            (Small box with scroll bar as requested by the user)
            ============================================================ */}
         <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col">
           
@@ -723,3 +1077,4 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
     </div>
   );
 };
+
