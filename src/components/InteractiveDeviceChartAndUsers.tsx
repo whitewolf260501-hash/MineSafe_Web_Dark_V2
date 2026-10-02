@@ -1,0 +1,725 @@
+import React, { useState } from 'react';
+import { 
+  Users, 
+  Crown, 
+  Shield, 
+  HardHat, 
+  Activity, 
+  Cpu, 
+  Radio, 
+  BarChart3, 
+  TrendingUp, 
+  ChevronRight, 
+  Search, 
+  Flame, 
+  Wind, 
+  Droplets, 
+  Thermometer, 
+  Clock, 
+  CheckCircle2, 
+  AlertTriangle,
+  Battery,
+  Wifi,
+  Sparkles,
+  Layers,
+  ArrowUpDown
+} from 'lucide-react';
+import { SensorDevice, UserProfile, UserRole } from '../types';
+
+interface InteractiveDeviceChartAndUsersProps {
+  currentUser?: UserProfile | null;
+  usersList: UserProfile[];
+  devices: SensorDevice[];
+  activeDeviceId?: string;
+  onSelectDevice: (deviceId: string) => void;
+  onSelectUser?: (user: UserProfile) => void;
+  onChangeUserModal?: () => void;
+  activeAlertCount?: number;
+}
+
+export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndUsersProps> = ({
+  currentUser,
+  usersList,
+  devices,
+  activeDeviceId,
+  onSelectDevice,
+  onSelectUser,
+  onChangeUserModal,
+  activeAlertCount = 0,
+}) => {
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<'todos' | UserRole>('todos');
+  const [chartViewMode, setChartViewMode] = useState<'levels' | 'timeline'>('levels');
+  const [selectedSensorMetric, setSelectedSensorMetric] = useState<string>('all');
+
+  // Currently selected device for the chart
+  const currentDevice = devices.find(d => d.id === activeDeviceId) || devices[0];
+
+  // Helper for current user role theme
+  const getRoleDetails = (role?: UserRole) => {
+    switch (role) {
+      case 'superadmin':
+        return {
+          label: 'Superadministrador',
+          typeText: '(Superadmin)',
+          bg: 'bg-purple-950/70 border-purple-600/70 text-purple-300 shadow-purple-950/40',
+          badgeBg: 'bg-purple-900/60 border-purple-500/80 text-purple-200',
+          avatarBg: 'bg-gradient-to-br from-purple-600 to-indigo-800 text-white border-purple-400',
+          icon: <Crown className="w-4 h-4 text-purple-400" />,
+          description: 'Control Total de Faena, Parámetros y Auditoría Sernageomin'
+        };
+      case 'admin':
+        return {
+          label: 'Administrador / Prevencionista',
+          typeText: '(Admin)',
+          bg: 'bg-cyan-950/70 border-cyan-600/70 text-cyan-300 shadow-cyan-950/40',
+          badgeBg: 'bg-cyan-900/60 border-cyan-500/80 text-cyan-200',
+          avatarBg: 'bg-gradient-to-br from-cyan-600 to-blue-800 text-white border-cyan-400',
+          icon: <Shield className="w-4 h-4 text-cyan-400" />,
+          description: 'Gestión de Alertas, Equipos, Reportes y Operaciones'
+        };
+      case 'operador':
+      default:
+        return {
+          label: 'Operador de Terreno',
+          typeText: '(Operador)',
+          bg: 'bg-amber-950/70 border-amber-600/70 text-amber-300 shadow-amber-950/40',
+          badgeBg: 'bg-amber-900/60 border-amber-500/80 text-amber-200',
+          avatarBg: 'bg-gradient-to-br from-amber-600 to-orange-700 text-white border-amber-400',
+          icon: <HardHat className="w-4 h-4 text-amber-400" />,
+          description: 'Monitoreo de Variables Atmosféricas y Protocolo de Seguridad'
+        };
+    }
+  };
+
+  const userRoleInfo = getRoleDetails(currentUser?.role);
+
+  // Filter users based on search query and role filter
+  const filteredUsers = usersList.filter(user => {
+    const matchesSearch = 
+      user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      (user.rut && user.rut.toLowerCase().includes(userSearchTerm.toLowerCase())) ||
+      (user.shift && user.shift.toLowerCase().includes(userSearchTerm.toLowerCase()));
+    
+    const matchesRole = selectedRoleFilter === 'todos' || user.role === selectedRoleFilter;
+    return matchesSearch && matchesRole;
+  });
+
+  // Calculate stats for top quick widgets
+  const totalUsersCount = usersList.length;
+  const superadminCount = usersList.filter(u => u.role === 'superadmin').length;
+  const adminCount = usersList.filter(u => u.role === 'admin').length;
+  const operadorCount = usersList.filter(u => u.role === 'operador').length;
+  const onlineDevicesCount = devices.filter(d => d.status !== 'desconectado').length;
+
+  // Extract readings for the currently selected device
+  // Raw or metrics
+  const coValue = currentDevice?.rawCO !== undefined ? currentDevice.rawCO : (currentDevice?.metrics?.co || 8.2);
+  const pm25Value = currentDevice?.rawPM25 !== undefined ? currentDevice.rawPM25 : (currentDevice?.metrics?.polvoPM || 22.0);
+  const tempValue = currentDevice?.rawTemp !== undefined ? currentDevice.rawTemp : (currentDevice?.metrics?.temperatura || 22.4);
+  const humValue = currentDevice?.rawHum !== undefined ? currentDevice.rawHum : (currentDevice?.metrics?.humedad || 54.0);
+  const co2Value = currentDevice?.metrics?.co2 || 760;
+  const airFlowValue = currentDevice?.metrics?.flujoAire || 0.85;
+  const ch4Value = currentDevice?.metrics?.ch4 || 0.8;
+  const batteryPct = currentDevice?.batteryPct ?? 90;
+
+  // Sensor definitions with safety thresholds according to Chilean Mining Safety Regulation DS 132
+  const sensorMetricsList = [
+    {
+      id: 'co',
+      name: 'Monóxido CO (MQ-2)',
+      unit: 'ppm',
+      value: Number(coValue.toFixed(1)),
+      safeMax: 50,
+      criticalMax: 100,
+      scaleMax: 120,
+      icon: <Flame className="w-4 h-4 text-orange-400" />,
+      color: coValue > 50 ? 'bg-rose-500' : coValue > 25 ? 'bg-amber-400' : 'bg-emerald-400',
+      textColor: coValue > 50 ? 'text-rose-400' : coValue > 25 ? 'text-amber-400' : 'text-emerald-400',
+      status: coValue > 50 ? 'CRÍTICO' : coValue > 25 ? 'ADVERTENCIA' : 'SEGURO',
+      norm: 'DS 132: LPP ≤ 50 ppm'
+    },
+    {
+      id: 'pm25',
+      name: 'Polvo en Suspensión (PM2.5)',
+      unit: 'µg/m³',
+      value: Number(pm25Value.toFixed(1)),
+      safeMax: 50,
+      criticalMax: 150,
+      scaleMax: 200,
+      icon: <Layers className="w-4 h-4 text-amber-300" />,
+      color: pm25Value > 150 ? 'bg-rose-500' : pm25Value > 50 ? 'bg-amber-400' : 'bg-emerald-400',
+      textColor: pm25Value > 150 ? 'text-rose-400' : pm25Value > 50 ? 'text-amber-400' : 'text-emerald-400',
+      status: pm25Value > 150 ? 'CRÍTICO' : pm25Value > 50 ? 'MODERADO' : 'ÓPTIMO',
+      norm: 'DS 132: LPP ≤ 50 µg/m³'
+    },
+    {
+      id: 'temp',
+      name: 'Temperatura Ambiente (DHT11)',
+      unit: '°C',
+      value: Number(tempValue.toFixed(1)),
+      safeMax: 28,
+      criticalMax: 32,
+      scaleMax: 45,
+      icon: <Thermometer className="w-4 h-4 text-cyan-400" />,
+      color: tempValue > 30 ? 'bg-rose-500' : tempValue > 28 ? 'bg-amber-400' : 'bg-cyan-400',
+      textColor: tempValue > 30 ? 'text-rose-400' : tempValue > 28 ? 'text-amber-400' : 'text-cyan-400',
+      status: tempValue > 30 ? 'SOBRECALENTAMIENTO' : tempValue > 28 ? 'ALTA' : 'CONFORTABLE',
+      norm: 'Rango estándar 18°C - 28°C'
+    },
+    {
+      id: 'hum',
+      name: 'Humedad Relativa (DHT11)',
+      unit: '%',
+      value: Number(humValue.toFixed(1)),
+      safeMax: 70,
+      criticalMax: 85,
+      scaleMax: 100,
+      icon: <Droplets className="w-4 h-4 text-blue-400" />,
+      color: humValue > 85 ? 'bg-amber-400' : 'bg-blue-400',
+      textColor: humValue > 85 ? 'text-amber-400' : 'text-blue-400',
+      status: humValue > 85 ? 'HUMEDAD ELEVADA' : 'ADECUADA',
+      norm: 'Recomendado 40% - 70%'
+    },
+    {
+      id: 'co2',
+      name: 'Dióxido de Carbono (CO2)',
+      unit: 'ppm',
+      value: co2Value,
+      safeMax: 1000,
+      criticalMax: 2000,
+      scaleMax: 2500,
+      icon: <Activity className="w-4 h-4 text-emerald-400" />,
+      color: co2Value > 1500 ? 'bg-rose-500' : co2Value > 1000 ? 'bg-amber-400' : 'bg-emerald-400',
+      textColor: co2Value > 1500 ? 'text-rose-400' : co2Value > 1000 ? 'text-amber-400' : 'text-emerald-400',
+      status: co2Value > 1500 ? 'VENTILAR' : co2Value > 1000 ? 'ATENCIÓN' : 'SEGURO',
+      norm: 'DS 132: LPP ≤ 1000 ppm'
+    },
+    {
+      id: 'airFlow',
+      name: 'Flujo de Ventilación',
+      unit: 'm/s',
+      value: airFlowValue,
+      safeMax: 2.5,
+      criticalMax: 0.5, // minimum airflow
+      scaleMax: 3.5,
+      icon: <Wind className="w-4 h-4 text-teal-400" />,
+      color: airFlowValue < 0.5 ? 'bg-rose-500' : 'bg-teal-400',
+      textColor: airFlowValue < 0.5 ? 'text-rose-400' : 'text-teal-400',
+      status: airFlowValue < 0.5 ? 'VENTILACIÓN INSUFICIENTE' : 'FLUJO ACTIVO',
+      norm: 'DS 132: Mínimo 0.5 m/s'
+    }
+  ];
+
+  // Simulated chronological readings for timeline mode
+  const timelineReadings = [
+    { hour: '00:00', co: Math.max(2, coValue - 3), pm25: Math.max(5, pm25Value - 6), temp: tempValue - 1.2 },
+    { hour: '04:00', co: Math.max(3, coValue - 2), pm25: Math.max(8, pm25Value - 4), temp: tempValue - 0.8 },
+    { hour: '08:00', co: coValue + 1, pm25: pm25Value + 2, temp: tempValue + 0.3 },
+    { hour: '12:00', co: coValue + 4, pm25: pm25Value + 8, temp: tempValue + 1.5 },
+    { hour: '16:00', co: coValue + 2, pm25: pm25Value + 4, temp: tempValue + 0.8 },
+    { hour: '20:00', co: coValue, pm25: pm25Value, temp: tempValue },
+  ];
+
+  return (
+    <div className="space-y-6">
+      
+      {/* ==============================================================
+          1. WELCOME MESSAGE & USER ROLE BANNER (Inspirado en el diseño)
+         ============================================================== */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 border border-slate-800 p-5 sm:p-6 shadow-xl">
+        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          
+          {/* Welcome User info */}
+          <div className="flex items-center gap-3.5">
+            <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center font-bold text-lg sm:text-xl shadow-lg shrink-0 ${userRoleInfo.avatarBg}`}>
+              {currentUser?.name?.charAt(0) || 'M'}
+            </div>
+            
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-1.5">
+                  Bienvenido, {currentUser?.name || 'Manuel Crisóstomo'} 👋
+                </h2>
+                
+                {/* User Role highlighted badge */}
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border shadow-sm ${userRoleInfo.bg}`}>
+                  {userRoleInfo.icon}
+                  <span>{userRoleInfo.typeText}</span>
+                </span>
+              </div>
+              
+              <p className="mt-1 text-xs sm:text-sm text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{userRoleInfo.label}</span>
+                <span>•</span>
+                <span className="text-slate-300 font-medium">{currentUser?.shift || 'Turno Continuo 7x7'}</span>
+                <span>•</span>
+                <span className="text-cyan-400 font-mono">Faena El Teniente</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Actions / Role change button */}
+          <div className="flex items-center gap-2.5 self-start md:self-center">
+            {onChangeUserModal && (
+              <button
+                onClick={onChangeUserModal}
+                className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-cyan-500/50 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Users className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Cambiar de Usuario</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 4 Quick Stat Cards (Exact match to the 4 stats widgets in the reference image) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-5 border-t border-slate-800/80">
+          
+          {/* Card 1: Total Users */}
+          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 hover:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Total Usuarios</span>
+              <div className="w-7 h-7 rounded-lg bg-blue-950/60 border border-blue-800/60 flex items-center justify-center text-blue-400">
+                <Users className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-white tabular-nums">
+              {totalUsersCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+              <span className="text-purple-400 font-semibold">{superadminCount} Super</span> • 
+              <span className="text-cyan-400 font-semibold">{adminCount} Adm</span> • 
+              <span className="text-amber-400 font-semibold">{operadorCount} Op</span>
+            </div>
+          </div>
+
+          {/* Card 2: Sensores IoT Online */}
+          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 hover:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Sensores IoT Online</span>
+              <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center text-emerald-400">
+                <Cpu className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-black text-emerald-400 tabular-nums">
+              {onlineDevicesCount} <span className="text-xs font-normal text-slate-400">/ {devices.length}</span>
+            </div>
+            <div className="text-[11px] text-emerald-300 mt-0.5 flex items-center gap-1 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Transmisión en vivo RTDB</span>
+            </div>
+          </div>
+
+          {/* Card 3: Dispositivo Seleccionado */}
+          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 hover:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Dispositivo Activo</span>
+              <div className="w-7 h-7 rounded-lg bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-cyan-400">
+                <Radio className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className="mt-2 text-sm sm:text-base font-bold text-white truncate" title={currentDevice?.name}>
+              {currentDevice?.name || 'ESP32 Gateway'}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 font-mono truncate">
+              {currentDevice?.code || currentDevice?.id} · Batería: {batteryPct}%
+            </div>
+          </div>
+
+          {/* Card 4: Alertas Activas */}
+          <div className="bg-slate-950/60 rounded-xl p-3.5 border border-slate-800/80 hover:border-slate-700 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-medium">Alertas de Faena</span>
+              <div className={`w-7 h-7 rounded-lg ${activeAlertCount > 0 ? 'bg-amber-950/80 border border-amber-800 text-amber-400' : 'bg-slate-900 border border-slate-800 text-slate-400'} flex items-center justify-center`}>
+                <AlertTriangle className="w-3.5 h-3.5" />
+              </div>
+            </div>
+            <div className={`mt-2 text-2xl font-black tabular-nums ${activeAlertCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+              {activeAlertCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {activeAlertCount === 0 ? 'Límites seguros bajo DS 132' : 'Verificar ventilación en galería'}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ==============================================================
+          2. TWO-COLUMN INTERACTIVE SECTION:
+             - LEFT: SENSOR LEVELS CHART WITH DEVICE SELECTOR
+             - RIGHT: SCROLLABLE SYSTEM USERS LIST
+         ============================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* ============================================================
+            COL 1: SENSOR LEVELS CHART WITH DEVICE SELECTOR (7 / 12 cols)
+           ============================================================ */}
+        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col justify-between">
+          
+          <div>
+            {/* Header with Title and Mode Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/80">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                    Niveles de Sensores IoT
+                    <span className="text-xs font-mono font-normal text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/50">
+                      {currentDevice?.code || currentDevice?.id}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Monitoreo en vivo de gases, polvo y confort térmico subterráneo.
+                  </p>
+                </div>
+              </div>
+
+              {/* View mode toggle */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 self-start sm:self-center shrink-0">
+                <button
+                  onClick={() => setChartViewMode('levels')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    chartViewMode === 'levels' 
+                      ? 'bg-cyan-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Barras de Nivel
+                </button>
+                <button
+                  onClick={() => setChartViewMode('timeline')}
+                  className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                    chartViewMode === 'timeline' 
+                      ? 'bg-cyan-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Tendencia Temporal
+                </button>
+              </div>
+            </div>
+
+            {/* DEVICE SELECTOR: Direct buttons + dropdown for all devices */}
+            <div className="mt-4 pt-1">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                  Cambiar Dispositivo Sensor:
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Ubicación: <strong className="text-slate-200">{currentDevice?.sectorName}</strong>
+                </span>
+              </div>
+
+              {/* Quick Select Buttons for main Gateways / Detectors */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {devices.slice(0, 4).map((dev) => {
+                  const isSelected = dev.id === currentDevice?.id;
+                  const isDevOnline = dev.status !== 'desconectado';
+                  return (
+                    <button
+                      key={dev.id}
+                      onClick={() => onSelectDevice(dev.id)}
+                      className={`flex flex-col text-left p-2.5 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'bg-cyan-950/80 border-cyan-500 text-white shadow-md shadow-cyan-950/50 ring-1 ring-cyan-400/50'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-xs font-bold truncate">{dev.code || dev.id.slice(-6)}</span>
+                        <span className={`w-2 h-2 rounded-full ${isDevOnline ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                      </div>
+                      <span className="text-[10px] text-slate-400 truncate mt-0.5">{dev.name.split(' ')[0]} {dev.name.split(' ')[1] || ''}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Comprehensive Dropdown for ALL devices */}
+              {devices.length > 4 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-xs text-slate-400 shrink-0">O seleccionar otro equipo:</span>
+                  <select
+                    value={currentDevice?.id}
+                    onChange={(e) => onSelectDevice(e.target.value)}
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                  >
+                    {devices.map((dev) => (
+                      <option key={dev.id} value={dev.id}>
+                        {dev.code} - {dev.name} ({dev.sectorName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* CHART DISPLAY: LEVELS MODE (Dynamic animated sensor bars) */}
+            {chartViewMode === 'levels' && (
+              <div className="space-y-3.5 mt-3">
+                {sensorMetricsList.map((metric) => {
+                  // Calculate percentage relative to scale
+                  const pct = Math.min(100, Math.max(5, (metric.value / metric.scaleMax) * 100));
+                  const isAboveSafe = metric.value > metric.safeMax;
+
+                  return (
+                    <div 
+                      key={metric.id}
+                      className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 hover:border-slate-700 transition-colors"
+                    >
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <div className="flex items-center gap-2">
+                          {metric.icon}
+                          <span className="font-semibold text-slate-200">{metric.name}</span>
+                          <span className="text-[10px] text-slate-400 hidden sm:inline">({metric.norm})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                            isAboveSafe 
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-800' 
+                              : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
+                          }`}>
+                            {metric.status}
+                          </span>
+                          <span className={`font-mono font-bold text-sm ${metric.textColor}`}>
+                            {metric.value} <span className="text-xs text-slate-400 font-normal">{metric.unit}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Visual gauge bar */}
+                      <div className="relative w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                        {/* Safe limit guide mark */}
+                        <div 
+                          className="absolute top-0 bottom-0 w-0.5 bg-slate-600 z-10"
+                          style={{ left: `${(metric.safeMax / metric.scaleMax) * 100}%` }}
+                          title={`Límite seguro: ${metric.safeMax} ${metric.unit}`}
+                        />
+                        {/* Dynamic level bar */}
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${metric.color}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* CHART DISPLAY: TIMELINE MODE (Simulated trends over shift) */}
+            {chartViewMode === 'timeline' && (
+              <div className="mt-4 bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+                <div className="flex items-center justify-between text-xs text-slate-400 mb-4">
+                  <span className="font-semibold text-slate-200">Evolución en Turno (Monóxido CO & PM2.5)</span>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" /> CO (ppm)</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-cyan-400" /> PM2.5 (µg/m³)</span>
+                  </div>
+                </div>
+
+                {/* SVG Mini Bar Chart */}
+                <div className="h-44 w-full flex items-end justify-between gap-2 pt-4 px-2">
+                  {timelineReadings.map((reading, index) => {
+                    const coHeight = Math.min(100, Math.max(10, (reading.co / 50) * 100));
+                    const pmHeight = Math.min(100, Math.max(10, (reading.pm25 / 100) * 100));
+                    
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
+                        <div className="w-full flex items-end justify-center gap-1 h-32">
+                          {/* CO Bar */}
+                          <div 
+                            className="w-1/2 max-w-[16px] bg-gradient-to-t from-orange-600 to-orange-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                            style={{ height: `${coHeight}%` }}
+                            title={`CO a las ${reading.hour}: ${reading.co.toFixed(1)} ppm`}
+                          />
+                          {/* PM2.5 Bar */}
+                          <div 
+                            className="w-1/2 max-w-[16px] bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t-sm transition-all duration-300 group-hover:brightness-125"
+                            style={{ height: `${pmHeight}%` }}
+                            title={`PM2.5 a las ${reading.hour}: ${reading.pm25.toFixed(1)} µg/m³`}
+                          />
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{reading.hour}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer of device card */}
+          <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <div className="flex items-center gap-2">
+              <Battery className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Batería: <strong className="text-slate-200">{batteryPct}%</strong></span>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-[11px]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Transmisión activa · {currentDevice?.signalStrength || 'Óptima'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ============================================================
+            COL 2: SCROLLABLE SYSTEM USERS LIST BOX (5 / 12 cols)
+            (Small box with scroll bar as requested by the user)
+           ============================================================ */}
+        <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl flex flex-col">
+          
+          {/* Header of Users Box */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-purple-950 text-purple-400 border border-purple-800/80">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  Usuarios del Sistema
+                  <span className="text-xs font-semibold bg-purple-950/80 text-purple-300 px-2 py-0.5 rounded-full border border-purple-800/60">
+                    {filteredUsers.length}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">Personal autorizado y roles en faena</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Search Input & Role Filter Tabs */}
+          <div className="my-3 space-y-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, RUT o cargo..."
+                value={userSearchTerm}
+                onChange={(e) => setUserSearchTerm(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
+              />
+            </div>
+
+            {/* Quick role pills */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[11px]">
+              {(['todos', 'superadmin', 'admin', 'operador'] as const).map((role) => {
+                const isActive = selectedRoleFilter === role;
+                return (
+                  <button
+                    key={role}
+                    onClick={() => setSelectedRoleFilter(role)}
+                    className={`px-2.5 py-1 rounded-md font-medium whitespace-nowrap transition-colors ${
+                      isActive
+                        ? 'bg-cyan-600 text-white shadow-sm font-semibold'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                    }`}
+                  >
+                    {role === 'todos' ? 'Todos' : role === 'superadmin' ? 'Superadmin' : role === 'admin' ? 'Admin' : 'Operadores'}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* SCROLLABLE USERS LIST CONTAINER (With prominent vertical scrollbar) */}
+          <div className="flex-1 overflow-y-auto max-h-[380px] pr-1.5 space-y-2.5 custom-scrollbar">
+            {filteredUsers.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400 bg-slate-950/40 rounded-xl border border-slate-800/60">
+                No se encontraron usuarios con ese criterio.
+              </div>
+            ) : (
+              filteredUsers.map((user) => {
+                const isCurrent = currentUser?.id === user.id || currentUser?.email.toLowerCase() === user.email.toLowerCase();
+                const roleMeta = getRoleDetails(user.role);
+
+                return (
+                  <div
+                    key={user.id}
+                    onClick={() => onSelectUser?.(user)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                      isCurrent
+                        ? 'bg-slate-950/90 border-cyan-500/70 shadow-md shadow-cyan-950/30 ring-1 ring-cyan-500/30'
+                        : 'bg-slate-950/50 border-slate-800/80 hover:bg-slate-950 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      {/* Avatar and Main Info */}
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 shadow-sm ${roleMeta.avatarBg}`}>
+                          {user.name.charAt(0)}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-100 truncate">
+                              {user.name}
+                            </h4>
+                            {isCurrent && (
+                              <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-700 px-1.5 py-0.2 rounded font-semibold">
+                                TÚ
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {user.email}
+                          </p>
+
+                          {user.rut && (
+                            <p className="text-[10px] font-mono text-slate-500">
+                              RUT: {user.rut}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Role Badge on the right */}
+                      <div className="shrink-0 text-right">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${roleMeta.badgeBg}`}>
+                          {roleMeta.icon}
+                          <span>{roleMeta.typeText}</span>
+                        </span>
+                        
+                        <div className="flex items-center justify-end gap-1 mt-1.5 text-[10px] text-slate-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span>{user.status === 'activo' ? 'En Línea' : 'Inactivo'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Secondary details: Shift or Sector */}
+                    <div className="mt-2.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-400">
+                      <span className="truncate">
+                        {user.shift || user.assignedSector || 'Turno General de Operaciones'}
+                      </span>
+                      <span className="text-cyan-400/80 font-medium shrink-0 flex items-center gap-0.5">
+                        <span>Ver perfil</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer note indicating scrollability */}
+          <div className="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Usa la barra para desplazar el listado</span>
+            <span className="text-cyan-400 font-medium">Desplazamiento vertical activo</span>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+};
