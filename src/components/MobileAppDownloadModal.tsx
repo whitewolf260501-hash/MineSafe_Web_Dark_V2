@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { 
   Smartphone, 
   Download, 
@@ -17,13 +18,18 @@ import {
   ExternalLink,
   Flame,
   Layers,
-  Sparkles
+  Sparkles,
+  Globe,
+  HardDriveDownload
 } from 'lucide-react';
 
 interface MobileAppDownloadModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const GDRIVE_APK_URL = 'https://drive.google.com/file/d/1trG9ISNGFsg77aRpfW_pcqHXWzx_JQlh/view?usp=drive_link';
+const LOCAL_APK_URL = '/MineSafe_IoT_Mobile_v2.4.apk';
 
 export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
   isOpen,
@@ -34,6 +40,12 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  // QR Code States
+  const [qrTarget, setQrTarget] = useState<'apk' | 'pwa'>('apk');
+  const [qrApkMode, setQrApkMode] = useState<'gdrive' | 'direct'>('gdrive');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [isCopiedQr, setIsCopiedQr] = useState<boolean>(false);
 
   // Capture PWA install prompt if available in browser
   useEffect(() => {
@@ -48,9 +60,41 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
     };
   }, []);
 
+  // Generate real, high-resolution scannable QR Code
+  useEffect(() => {
+    let target = '';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2';
+    
+    if (qrTarget === 'apk') {
+      if (qrApkMode === 'gdrive') {
+        target = GDRIVE_APK_URL;
+      } else {
+        target = `${origin}${LOCAL_APK_URL}`;
+      }
+    } else {
+      target = origin;
+    }
+
+    QRCode.toDataURL(target, {
+      width: 400,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#030712',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => {
+        setQrDataUrl(url);
+      })
+      .catch((err) => {
+        console.error('Error generating QR code:', err);
+      });
+  }, [qrTarget, qrApkMode]);
+
   if (!isOpen) return null;
 
-  const appUrl = window.location.origin || 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2/';
+  const appUrl = typeof window !== 'undefined' ? (window.location.origin || 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2/') : 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2/';
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(appUrl);
@@ -71,30 +115,14 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
     }
   };
 
-  // Direct APK download generation
+  // Direct APK download from local server bundle
   const handleDownloadApk = () => {
     setIsDownloading(true);
     setDownloadSuccess(false);
 
     setTimeout(() => {
-      // Create a valid APK archive container with AndroidManifest & MineSafe bundle descriptor
-      const apkHeader = 'PK\x03\x04\x14\x00\x08\x00\x08\x00';
-      const manifestContent = `
-Package: cl.minesafe.iot.app
-VersionCode: 240
-VersionName: 2.4.0
-Application: MineSafe IoT Mobile (Sernageomin DS 132 Compliant)
-BuildDate: 2026-10-13
-FirebaseRTDB: https://minefase-fc5f5-default-rtdb.firebaseio.com/
-Permissions: INTERNET, ACCESS_NETWORK_STATE, VIBRATE, WAKE_LOCK, POST_NOTIFICATIONS
-Description: Sistema móvil de alerta temprana de gases subterráneos y control de faenas.
-`;
-      const blob = new Blob([apkHeader + manifestContent], { 
-        type: 'application/vnd.android.package-archive' 
-      });
-      
       const downloadLink = document.createElement('a');
-      downloadLink.href = URL.createObjectURL(blob);
+      downloadLink.href = LOCAL_APK_URL;
       downloadLink.download = 'MineSafe_IoT_Mobile_v2.4.apk';
       document.body.appendChild(downloadLink);
       downloadLink.click();
@@ -102,7 +130,31 @@ Description: Sistema móvil de alerta temprana de gases subterráneos y control 
 
       setIsDownloading(false);
       setDownloadSuccess(true);
-    }, 1200);
+    }, 600);
+  };
+
+  const getCurrentQrUrl = (): string => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2';
+    if (qrTarget === 'apk') {
+      return qrApkMode === 'gdrive' ? GDRIVE_APK_URL : `${origin}${LOCAL_APK_URL}`;
+    }
+    return origin;
+  };
+
+  const handleCopyQrUrl = () => {
+    navigator.clipboard.writeText(getCurrentQrUrl());
+    setIsCopiedQr(true);
+    setTimeout(() => setIsCopiedQr(false), 2500);
+  };
+
+  const handleDownloadQrImage = () => {
+    if (!qrDataUrl) return;
+    const link = document.createElement('a');
+    link.href = qrDataUrl;
+    link.download = `MineSafe_QR_${qrTarget === 'apk' ? 'Descarga_APK' : 'WebApp'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -193,8 +245,11 @@ Description: Sistema móvil de alerta temprana de gases subterráneos y control 
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-white">MineSafe_IoT_Mobile_v2.4.apk</span>
-                    <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.2 rounded border border-cyan-800 font-mono">
-                      18.4 MB
+                    <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800 font-mono font-semibold">
+                      26.6 MB
+                    </span>
+                    <span className="text-[10px] text-emerald-300 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800 font-mono">
+                      Oficial
                     </span>
                   </div>
                   <p className="text-xs text-slate-400">
@@ -207,17 +262,33 @@ Description: Sistema móvil de alerta temprana de gases subterráneos y control 
                     <span className="flex items-center gap-1 text-cyan-400">
                       <Radio className="w-3 h-3" /> RTDB minefase-fc5f5
                     </span>
+                    <span className="flex items-center gap-1 text-purple-400">
+                      <ShieldCheck className="w-3 h-3" /> Verificado por Google Drive
+                    </span>
                   </div>
                 </div>
 
-                <button
-                  onClick={handleDownloadApk}
-                  disabled={isDownloading}
-                  className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-950 flex items-center justify-center gap-2 shrink-0 transition-transform active:scale-95 disabled:opacity-75 cursor-pointer"
-                >
-                  <Download className={`w-4 h-4 ${isDownloading ? 'animate-bounce' : ''}`} />
-                  <span>{isDownloading ? 'Generando APK...' : 'Descargar APK Ahora'}</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  <button
+                    onClick={handleDownloadApk}
+                    disabled={isDownloading}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-950 flex items-center justify-center gap-2 transition-transform active:scale-95 disabled:opacity-75 cursor-pointer"
+                  >
+                    <Download className={`w-4 h-4 ${isDownloading ? 'animate-bounce' : ''}`} />
+                    <span>{isDownloading ? 'Iniciando descarga...' : 'Descargar APK Ahora'}</span>
+                  </button>
+
+                  <a
+                    href={GDRIVE_APK_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                    title="Abrir o descargar directamente desde Google Drive"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Abrir en Drive</span>
+                  </a>
+                </div>
               </div>
 
               {downloadSuccess && (
@@ -335,106 +406,155 @@ Description: Sistema móvil de alerta temprana de gases subterráneos y control 
           {/* TAB 3: CÓDIGO QR PARA CELULARES */}
           {activeTab === 'qr' && (
             <div className="space-y-4">
+
+              {/* Selector de objetivo del código QR */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950/80 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setQrTarget('apk')}
+                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    qrTarget === 'apk'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-950'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Descargar APK (Android)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrTarget('pwa')}
+                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    qrTarget === 'pwa'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md shadow-cyan-950'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Abrir Web App (PWA)</span>
+                </button>
+              </div>
+
+              {/* Subselector para fuente del APK */}
+              {qrTarget === 'apk' && (
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-950/50 border border-slate-800/80 rounded-lg text-xs">
+                  <span className="text-slate-400 text-[11px] flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    Destino del QR:
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setQrApkMode('gdrive')}
+                      className={`px-2.5 py-1 rounded text-[10.5px] font-semibold transition-colors ${
+                        qrApkMode === 'gdrive'
+                          ? 'bg-purple-900/60 text-purple-300 border border-purple-700/80'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Google Drive Oficial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrApkMode('direct')}
+                      className={`px-2.5 py-1 rounded text-[10.5px] font-semibold transition-colors ${
+                        qrApkMode === 'direct'
+                          ? 'bg-cyan-900/60 text-cyan-300 border border-cyan-700/80'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Descarga Directa Servidor
+                    </button>
+                  </div>
+                </div>
+              )}
               
               <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-5 flex flex-col sm:flex-row items-center gap-5">
                 
-                {/* Visual SVG QR Code Matrix */}
-                <div className="p-3 bg-white rounded-2xl shadow-xl shrink-0 flex items-center justify-center">
-                  <svg 
-                    viewBox="0 0 100 100" 
-                    className="w-36 h-36"
-                    fill="currentColor"
-                  >
-                    {/* Top-Left Positioning Box */}
-                    <rect x="5" y="5" width="26" height="26" fill="#090e17" rx="3" />
-                    <rect x="9" y="9" width="18" height="18" fill="white" rx="2" />
-                    <rect x="13" y="13" width="10" height="10" fill="#090e17" rx="1" />
-
-                    {/* Top-Right Positioning Box */}
-                    <rect x="69" y="5" width="26" height="26" fill="#090e17" rx="3" />
-                    <rect x="73" y="9" width="18" height="18" fill="white" rx="2" />
-                    <rect x="77" y="13" width="10" height="10" fill="#090e17" rx="1" />
-
-                    {/* Bottom-Left Positioning Box */}
-                    <rect x="5" y="69" width="26" height="26" fill="#090e17" rx="3" />
-                    <rect x="9" y="73" width="18" height="18" fill="white" rx="2" />
-                    <rect x="13" y="77" width="10" height="10" fill="#090e17" rx="1" />
-
-                    {/* QR Code Pixel Matrix Dots for MineSafe URL */}
-                    <rect x="36" y="8" width="5" height="5" fill="#090e17" />
-                    <rect x="46" y="8" width="5" height="5" fill="#090e17" />
-                    <rect x="56" y="8" width="5" height="5" fill="#090e17" />
-                    <rect x="36" y="18" width="5" height="5" fill="#090e17" />
-                    <rect x="46" y="18" width="5" height="5" fill="#090e17" />
-                    <rect x="56" y="18" width="5" height="5" fill="#090e17" />
-
-                    <rect x="8" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="18" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="28" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="38" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="48" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="58" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="68" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="78" y="36" width="5" height="5" fill="#090e17" />
-                    <rect x="88" y="36" width="5" height="5" fill="#090e17" />
-
-                    <rect x="8" y="46" width="5" height="5" fill="#090e17" />
-                    <rect x="28" y="46" width="5" height="5" fill="#090e17" />
-                    <rect x="48" y="46" width="5" height="5" fill="#090e17" />
-                    <rect x="68" y="46" width="5" height="5" fill="#090e17" />
-                    <rect x="88" y="46" width="5" height="5" fill="#090e17" />
-
-                    <rect x="8" y="56" width="5" height="5" fill="#090e17" />
-                    <rect x="18" y="56" width="5" height="5" fill="#090e17" />
-                    <rect x="38" y="56" width="5" height="5" fill="#090e17" />
-                    <rect x="58" y="56" width="5" height="5" fill="#090e17" />
-                    <rect x="78" y="56" width="5" height="5" fill="#090e17" />
-
-                    <rect x="36" y="68" width="5" height="5" fill="#090e17" />
-                    <rect x="46" y="68" width="5" height="5" fill="#090e17" />
-                    <rect x="56" y="68" width="5" height="5" fill="#090e17" />
-                    <rect x="76" y="68" width="5" height="5" fill="#090e17" />
-                    <rect x="86" y="68" width="5" height="5" fill="#090e17" />
-
-                    <rect x="36" y="78" width="5" height="5" fill="#090e17" />
-                    <rect x="56" y="78" width="5" height="5" fill="#090e17" />
-                    <rect x="66" y="78" width="5" height="5" fill="#090e17" />
-                    <rect x="86" y="78" width="5" height="5" fill="#090e17" />
-
-                    <rect x="36" y="88" width="5" height="5" fill="#090e17" />
-                    <rect x="46" y="88" width="5" height="5" fill="#090e17" />
-                    <rect x="66" y="88" width="5" height="5" fill="#090e17" />
-                    <rect x="76" y="88" width="5" height="5" fill="#090e17" />
-                  </svg>
+                {/* Real High-Resolution Scannable QR Code */}
+                <div className="p-3 bg-white rounded-2xl shadow-2xl shrink-0 flex flex-col items-center justify-center border-4 border-slate-700/30">
+                  {qrDataUrl ? (
+                    <img
+                      src={qrDataUrl}
+                      alt="Código QR Real MineSafe IoT"
+                      className="w-40 h-40 object-contain rounded-lg block"
+                    />
+                  ) : (
+                    <div className="w-40 h-40 flex items-center justify-center bg-slate-100 rounded-lg text-slate-500 text-xs">
+                      Generando QR...
+                    </div>
+                  )}
+                  <span className="text-[10px] font-bold text-slate-800 tracking-wider font-mono mt-1">
+                    {qrTarget === 'apk' ? 'ESCANEAR PARA APK' : 'ESCANEAR PARA PWA'}
+                  </span>
                 </div>
 
-                {/* QR Guide */}
-                <div className="space-y-3 flex-1 text-xs">
+                {/* QR Guide & Action Controls */}
+                <div className="space-y-3 flex-1 text-xs w-full">
                   <div>
-                    <h4 className="font-bold text-white text-sm">Escanea con la cámara de tu celular</h4>
-                    <p className="text-slate-400 mt-1">
-                      Apunta tu teléfono al código QR para abrir e instalar MineSafe inmediatamente sin escribir direcciones ni usar cables.
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-white text-sm">
+                        {qrTarget === 'apk' 
+                          ? 'Escanea para descargar el APK en tu celular' 
+                          : 'Escanea para abrir la app en tu navegador'}
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                        100% Escaneable
+                      </span>
+                    </div>
+                    <p className="text-slate-400 mt-1 text-[11px] leading-relaxed">
+                      {qrTarget === 'apk'
+                        ? 'Abre la cámara de tu teléfono Android o iPhone y apunta hacia la pantalla. Tu teléfono detectará el enlace y comenzará la descarga de MineSafe inmediatamente.'
+                        : 'Apunta tu cámara al código para abrir MineSafe directamente en Chrome o Safari móvil e instalar el acceso directo sin cables.'}
                     </p>
                   </div>
 
+                  {/* URL Display */}
                   <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <span className="text-[11px] text-slate-400">O copia el enlace directo:</span>
+                    <span className="text-[11px] text-slate-400">Enlace codificado en el QR:</span>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         readOnly
-                        value={appUrl}
+                        value={getCurrentQrUrl()}
                         className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-300 font-mono truncate"
                       />
                       <button
-                        onClick={handleCopyUrl}
+                        type="button"
+                        onClick={handleCopyQrUrl}
                         className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                        title="Copiar enlace"
                       >
-                        {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{isCopied ? 'Copiado' : 'Copiar'}</span>
+                        {isCopiedQr ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{isCopiedQr ? 'Copiado' : 'Copiar'}</span>
                       </button>
                     </div>
                   </div>
+
+                  {/* Quick Action Buttons */}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleDownloadQrImage}
+                      className="px-3 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-800/80 rounded-lg font-medium text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Descargar la imagen del código QR en formato PNG para imprimirlo o compartirlo"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Descargar imagen QR (.PNG)</span>
+                    </button>
+
+                    <a
+                      href={getCurrentQrUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg font-medium text-[11px] flex items-center gap-1.5 transition-colors"
+                      title="Probar el enlace en una nueva pestaña"
+                    >
+                      <ExternalLink className="w-3 h-3 text-cyan-400" />
+                      <span>Probar enlace</span>
+                    </a>
+                  </div>
+
                 </div>
 
               </div>
