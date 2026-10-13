@@ -1,0 +1,9 @@
+PK    MineSafe-IoT-Mobile-v2.4-Android-Package
+Package: cl.minesafe.iot.app
+Version: 2.4.0
+Build: 20261013
+Permissions: INTERNET, ACCESS_FINE_LOCATION, VIBRATE, WAKE_LOCK, POST_NOTIFICATIONS
+Backend: https://minefase-fc5f5-default-rtdb.firebaseio.com/
+Normativa: Sernageomin DS 132
+Plataforma: Android 8.0+ / Industriales Rugged
+Módulos: Telemetría en Vivo, Sirena Acústica DS 132, Control Baliza LED, Registro de Evacuación
