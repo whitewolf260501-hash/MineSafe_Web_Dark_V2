@@ -53,6 +53,8 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
   // QR Code States
   const [qrTarget, setQrTarget] = useState<'apk' | 'pwa'>('apk');
   const [qrApkMode, setQrApkMode] = useState<'gdrive' | 'direct'>('gdrive');
+  const [apkQrDataUrl, setApkQrDataUrl] = useState<string>('');
+  const [pwaQrDataUrl, setPwaQrDataUrl] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isCopiedQr, setIsCopiedQr] = useState<boolean>(false);
 
@@ -69,22 +71,14 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
     };
   }, []);
 
-  // Generate real, high-resolution scannable QR Code
+  // Generate real, high-resolution scannable QR Codes for APK and PWA
   useEffect(() => {
-    let target = '';
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://whitewolf260501-hash.github.io/MineSafe_Web_Dark_V2';
-    
-    if (qrTarget === 'apk') {
-      if (qrApkMode === 'gdrive') {
-        target = GDRIVE_APK_URL;
-      } else {
-        target = `${origin}${LOCAL_APK_URL}`;
-      }
-    } else {
-      target = origin;
-    }
+    const apkTarget = qrApkMode === 'gdrive' ? GDRIVE_APK_URL : `${origin}${LOCAL_APK_URL}`;
+    const pwaTarget = origin;
 
-    QRCode.toDataURL(target, {
+    // Generate APK QR
+    QRCode.toDataURL(apkTarget, {
       width: 400,
       margin: 2,
       errorCorrectionLevel: 'M',
@@ -94,12 +88,35 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
       },
     })
       .then((url) => {
-        setQrDataUrl(url);
+        setApkQrDataUrl(url);
+        if (qrTarget === 'apk') {
+          setQrDataUrl(url);
+        }
       })
       .catch((err) => {
-        console.error('Error generating QR code:', err);
+        console.error('Error generating APK QR code:', err);
       });
-  }, [qrTarget, qrApkMode]);
+
+    // Generate PWA QR
+    QRCode.toDataURL(pwaTarget, {
+      width: 400,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#030712',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => {
+        setPwaQrDataUrl(url);
+        if (qrTarget === 'pwa') {
+          setQrDataUrl(url);
+        }
+      })
+      .catch((err) => {
+        console.error('Error generating PWA QR code:', err);
+      });
+  }, [qrApkMode, qrTarget]);
 
   if (!isOpen) return null;
 
@@ -335,9 +352,9 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                 <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-xl pointer-events-none" />
 
                 <div className="p-2.5 bg-white rounded-xl shadow-xl shrink-0 flex flex-col items-center justify-center border-2 border-cyan-500/40 relative z-10">
-                  {qrDataUrl ? (
+                  {apkQrDataUrl || qrDataUrl ? (
                     <img
-                      src={qrDataUrl}
+                      src={apkQrDataUrl || qrDataUrl}
                       alt="Código QR Descarga APK MineSafe"
                       className="w-32 h-32 object-contain rounded block"
                     />
@@ -483,7 +500,7 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                   Puedes instalar MineSafe directamente en la pantalla de inicio de tu celular mediante tecnología PWA (Progressive Web App). Funciona de forma idéntica a una aplicación nativa, con icono propio, pantalla completa y soporte sin conexión.
                 </p>
 
-                {deferredPrompt ? (
+                {deferredPrompt && (
                   <button
                     onClick={handleInstallPWA}
                     className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
@@ -491,37 +508,125 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                     <Smartphone className="w-4 h-4" />
                     <span>Instalar en Este Dispositivo Ahora</span>
                   </button>
-                ) : (
-                  <div className="pt-2 border-t border-slate-800 space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      
-                      {/* Android Instructions */}
-                      <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                        <p className="font-bold text-cyan-400 flex items-center gap-1.5 mb-1">
-                          <span>📱 En Android (Chrome / Edge):</span>
-                        </p>
-                        <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px]">
-                          <li>Toca los tres puntos <strong>(⋮)</strong> arriba a la derecha.</li>
-                          <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla principal"</strong>.</li>
-                          <li>Confirma y el icono de MineSafe aparecerá en tu teléfono.</li>
-                        </ol>
-                      </div>
+                )}
+              </div>
 
-                      {/* iPhone Instructions */}
-                      <div className="bg-slate-900 p-3 rounded-lg border border-slate-800">
-                        <p className="font-bold text-cyan-400 flex items-center gap-1.5 mb-1">
-                          <span>🍏 En iPhone (Safari):</span>
-                        </p>
-                        <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px]">
-                          <li>Toca el botón <strong>Compartir</strong> (cuadrado con flecha hacia arriba).</li>
-                          <li>Desliza y pulsa <strong>"Agregar al inicio" (+)</strong>.</li>
-                          <li>Toca <strong>"Agregar"</strong> en la esquina superior derecha.</li>
-                        </ol>
-                      </div>
+              {/* SECCIÓN DEL CÓDIGO QR PARA INSTALAR PWA DESDE CELULAR */}
+              <div className="bg-slate-950/80 border border-emerald-800/60 rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4 relative overflow-hidden shadow-md">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
 
+                <div className="p-2.5 bg-white rounded-xl shadow-xl shrink-0 flex flex-col items-center justify-center border-2 border-emerald-500/40 relative z-10">
+                  {pwaQrDataUrl ? (
+                    <img
+                      src={pwaQrDataUrl}
+                      alt="Código QR PWA MineSafe"
+                      className="w-32 h-32 object-contain rounded block"
+                    />
+                  ) : (
+                    <div className="w-32 h-32 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">
+                      Generando QR...
+                    </div>
+                  )}
+                  <span className="text-[9px] font-bold text-slate-900 tracking-wider font-mono mt-1">
+                    ESCANEAR PARA PWA
+                  </span>
+                </div>
+
+                <div className="space-y-2 flex-1 text-xs w-full relative z-10">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <QrCode className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <h4 className="font-bold text-white text-xs sm:text-sm">
+                        Escanear para abrir en tu celular
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700 font-mono">
+                        iOS & Android
+                      </span>
+                    </div>
+                    <p className="text-slate-400 mt-1 text-[11px] leading-relaxed">
+                      Apunta con la cámara de tu smartphone hacia el código QR. Se abrirá MineSafe en tu navegador móvil (Chrome o Safari) listo para añadir a la pantalla de inicio con un solo toque.
+                    </p>
+                  </div>
+
+                  {/* URL Display and Copy */}
+                  <div className="space-y-1 pt-1 border-t border-slate-800/80">
+                    <span className="text-[10.5px] text-slate-400">Enlace de la aplicación web:</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        readOnly
+                        value={appUrl}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-[10.5px] text-slate-300 font-mono truncate"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCopyUrl}
+                        className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                      >
+                        {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{isCopied ? 'Copiado' : 'Copiar'}</span>
+                      </button>
                     </div>
                   </div>
-                )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <a
+                      href={appUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg text-[10.5px] font-medium flex items-center gap-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3 text-cyan-400" />
+                      <span>Abrir en nueva pestaña</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQrTarget('pwa');
+                        setActiveTab('qr');
+                      }}
+                      className="px-2.5 py-1 bg-emerald-950/70 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/80 rounded-lg text-[10.5px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3 text-emerald-400" />
+                      <span>Ver Panel QR Ampliado</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step-by-step guides for Android & iPhone */}
+              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 space-y-2.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  Instrucciones según tu teléfono:
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Android Instructions */}
+                  <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                    <p className="font-bold text-cyan-400 flex items-center gap-1.5">
+                      <span>📱 En Android (Chrome / Edge):</span>
+                    </p>
+                    <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
+                      <li>Toca los tres puntos <strong>(⋮)</strong> arriba a la derecha.</li>
+                      <li>Selecciona <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla principal"</strong>.</li>
+                      <li>Confirma y el icono de MineSafe aparecerá en tu teléfono.</li>
+                    </ol>
+                  </div>
+
+                  {/* iPhone Instructions */}
+                  <div className="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                    <p className="font-bold text-emerald-400 flex items-center gap-1.5">
+                      <span>🍏 En iPhone (Safari):</span>
+                    </p>
+                    <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
+                      <li>Toca el botón <strong>Compartir</strong> (icono de cuadrado con flecha hacia arriba).</li>
+                      <li>Desliza hacia abajo y pulsa <strong>"Agregar al inicio" (+)</strong>.</li>
+                      <li>Toca <strong>"Agregar"</strong> en la esquina superior derecha.</li>
+                    </ol>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -597,9 +702,9 @@ export const MobileAppDownloadModal: React.FC<MobileAppDownloadModalProps> = ({
                 
                 {/* Real High-Resolution Scannable QR Code */}
                 <div className="p-3 bg-white rounded-2xl shadow-2xl shrink-0 flex flex-col items-center justify-center border-4 border-slate-700/30">
-                  {qrDataUrl ? (
+                  {(qrTarget === 'apk' ? apkQrDataUrl : pwaQrDataUrl) || qrDataUrl ? (
                     <img
-                      src={qrDataUrl}
+                      src={(qrTarget === 'apk' ? apkQrDataUrl : pwaQrDataUrl) || qrDataUrl}
                       alt="Código QR Real MineSafe IoT"
                       className="w-40 h-40 object-contain rounded-lg block"
                     />
