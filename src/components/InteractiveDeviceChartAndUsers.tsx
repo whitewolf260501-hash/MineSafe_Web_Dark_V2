@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { 
   Users, 
   Crown, 
@@ -28,7 +29,11 @@ import {
   Gauge,
   Smartphone,
   Download,
-  QrCode
+  QrCode,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 import { SensorDevice, UserProfile, UserRole } from '../types';
 import { MobileAppDownloadModal } from './MobileAppDownloadModal';
@@ -60,15 +65,62 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
   const [timelineGroup, setTimelineGroup] = useState<'gases' | 'clima' | 'seguridad' | 'todos'>('gases');
   const [hoveredSensorId, setHoveredSensorId] = useState<string | null>(null);
   const [showMobileModal, setShowMobileModal] = useState(false);
+  const [mobileModalTab, setMobileModalTab] = useState<'apk' | 'pwa' | 'qr'>('apk');
+  const [cardQrUrl, setCardQrUrl] = useState<string>('');
+  const [cardQrMode, setCardQrMode] = useState<'gdrive' | 'direct'>('gdrive');
+  const [cardQrCopied, setCardQrCopied] = useState(false);
+  const [directDownloadSuccess, setDirectDownloadSuccess] = useState(false);
+
+  // Generate Scannable QR Code for the in-card section
+  useEffect(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const targetUrl = cardQrMode === 'gdrive'
+      ? 'https://drive.google.com/file/d/1trG9ISNGFsg77aRpfW_pcqHXWzx_JQlh/view?usp=drive_link'
+      : `${origin}/MineSafe_IoT_Mobile_v2.4.apk`;
+
+    QRCode.toDataURL(targetUrl, {
+      width: 256,
+      margin: 1.5,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#030712',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setCardQrUrl(url))
+      .catch((err) => console.error('Error generating card QR:', err));
+  }, [cardQrMode]);
+
+  const handleOpenMobileModal = (tab: 'apk' | 'pwa' | 'qr' = 'apk') => {
+    setMobileModalTab(tab);
+    setShowMobileModal(true);
+  };
 
   // Direct APK download trigger
   const handleDirectApkDownload = () => {
-    const link = document.createElement('a');
-    link.href = '/MineSafe_IoT_Mobile_v2.4.apk';
-    link.download = 'MineSafe_IoT_Mobile_v2.4.apk';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const link = document.createElement('a');
+      link.href = '/MineSafe_IoT_Mobile_v2.4.apk';
+      link.download = 'MineSafe_IoT_Mobile_v2.4.apk';
+      link.setAttribute('target', '_blank');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setDirectDownloadSuccess(true);
+      setTimeout(() => setDirectDownloadSuccess(false), 4500);
+    } catch {
+      handleOpenMobileModal('apk');
+    }
+  };
+
+  const handleCopyCardQrUrl = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const targetUrl = cardQrMode === 'gdrive'
+      ? 'https://drive.google.com/file/d/1trG9ISNGFsg77aRpfW_pcqHXWzx_JQlh/view?usp=drive_link'
+      : `${origin}/MineSafe_IoT_Mobile_v2.4.apk`;
+    navigator.clipboard.writeText(targetUrl);
+    setCardQrCopied(true);
+    setTimeout(() => setCardQrCopied(false), 2500);
   };
 
   // Currently selected device for the chart
@@ -1137,6 +1189,101 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
               </span>
             </div>
 
+            {/* SECCIÓN DEL CÓDIGO QR DIRECTO PARA CELULARES */}
+            <div className="mt-3.5 p-3.5 rounded-xl bg-slate-950/90 border border-cyan-800/70 shadow-lg relative z-10">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <QrCode className="w-3.5 h-3.5 text-cyan-400" />
+                  Sección Código QR (Descarga en Celular)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-semibold">
+                  100% Escaneable
+                </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3.5">
+                {/* Visual Scannable QR Frame */}
+                <div className="p-2 bg-white rounded-xl shadow-md shrink-0 flex flex-col items-center justify-center border-2 border-cyan-500/50">
+                  {cardQrUrl ? (
+                    <img
+                      src={cardQrUrl}
+                      alt="Código QR MineSafe IoT"
+                      className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded block"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center bg-slate-100 rounded text-slate-500 text-[10px]">
+                      Generando QR...
+                    </div>
+                  )}
+                  <span className="text-[8px] font-bold text-slate-900 tracking-wider font-mono mt-0.5">
+                    ESCANEAR CON CELULAR
+                  </span>
+                </div>
+
+                {/* QR Info and Actions */}
+                <div className="space-y-1.5 flex-1 text-xs w-full">
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    Apunta con la cámara de tu smartphone hacia el código QR para descargar el instalador APK directamente sin necesidad de cables.
+                  </p>
+
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <span className="text-[10px] text-slate-400 font-medium">Origen:</span>
+                    <button
+                      type="button"
+                      onClick={() => setCardQrMode('gdrive')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                        cardQrMode === 'gdrive'
+                          ? 'bg-purple-900/80 text-purple-200 border border-purple-500'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Google Drive Oficial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCardQrMode('direct')}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
+                        cardQrMode === 'direct'
+                          ? 'bg-cyan-900/80 text-cyan-200 border border-cyan-500'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      Servidor Directo
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCopyCardQrUrl}
+                      className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Copiar enlace codificado en el código QR"
+                    >
+                      {cardQrCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{cardQrCopied ? 'Copiado' : 'Copiar URL'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenMobileModal('qr')}
+                      className="px-2.5 py-1 rounded bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-800 text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                      title="Abrir el código QR ampliado en pantalla completa o descargar la imagen"
+                    >
+                      <Sparkles className="w-3 h-3 text-cyan-400" />
+                      <span>Ampliar QR</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {directDownloadSuccess && (
+              <div className="mt-2.5 p-2 bg-emerald-950/90 border border-emerald-800 text-emerald-300 rounded-lg text-xs flex items-center gap-1.5 animate-in fade-in relative z-10">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Descarga del APK iniciada correctamente. Revisa tus descargas.</span>
+              </div>
+            )}
+
             {/* Action Buttons */}
             <div className="mt-3.5 pt-3 border-t border-slate-800/80 grid grid-cols-2 gap-2 relative z-10">
               <button
@@ -1149,7 +1296,7 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
               </button>
 
               <button
-                onClick={() => setShowMobileModal(true)}
+                onClick={() => handleOpenMobileModal('qr')}
                 className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-cyan-500/50 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 title="Escanear código QR con el celular o instalar PWA"
               >
@@ -1167,6 +1314,7 @@ export const InteractiveDeviceChartAndUsers: React.FC<InteractiveDeviceChartAndU
       <MobileAppDownloadModal
         isOpen={showMobileModal}
         onClose={() => setShowMobileModal(false)}
+        initialTab={mobileModalTab}
       />
 
     </div>
