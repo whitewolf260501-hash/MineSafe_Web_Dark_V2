@@ -19,7 +19,8 @@ import {
   SensorDevice, 
   UserProfile, 
   DeviceRental,
-  UserRole
+  UserRole,
+  SafetyAlert
 } from '../types';
 
 export const USER_RTDB_URL = "https://minefase-fc5f5-default-rtdb.firebaseio.com/";
@@ -519,20 +520,39 @@ export async function sendESP32Command(deviceId: string, command: 'pause' | 'res
   }
 }
 
-export async function resetGatewayDataInRTDB(deviceId: string): Promise<void> {
+export async function resetGatewayDataInRTDB(deviceId?: string): Promise<void> {
   try {
-    const devRef = ref(rtdb, `dispositivos/${deviceId}`);
-    await update(devRef, {
+    const now = Date.now();
+    const resetPayload = {
       CO: 45, // safe clean air baseline
       PM2_5: 25, // safe low particle baseline
       temperatura: 21.5,
       humedad: 48,
-      last_update_server: Date.now(),
+      last_update_server: now,
       alarma: false,
       buzzer: false,
       luz: false,
+      iluminacion_led: false,
       estado_adquisicion: 'activo',
-    });
+      simulacro_activo: false,
+    };
+
+    // Update target device, Android primary device, and gateway in RTDB
+    const devIds = Array.from(new Set([deviceId, 'device_38A839E81F84', 'device_A4CB2F124B00', 'gateway'].filter(Boolean)));
+    for (const id of devIds) {
+      const devRef = ref(rtdb, `dispositivos/${id}`);
+      await update(devRef, resetPayload).catch(() => {});
+    }
+
+    // Reset root alert/drill indicators
+    const rootRef = ref(rtdb);
+    await update(rootRef, {
+      alarma: false,
+      buzzer: false,
+      luz: false,
+      simulacro: { activo: false, finalizado: true, timestamp: now },
+      emergencia: { activa: false, timestamp: now }
+    }).catch(() => {});
   } catch (err) {
     console.warn('Error resetting gateway in RTDB:', err);
   }
@@ -540,12 +560,25 @@ export async function resetGatewayDataInRTDB(deviceId: string): Promise<void> {
 
 export async function toggleGatewayAlarmInRTDB(deviceId: string, active: boolean): Promise<void> {
   try {
-    const devRef = ref(rtdb, `dispositivos/${deviceId}`);
-    await update(devRef, {
+    const now = Date.now();
+    const payload = {
       alarma: active,
       buzzer: active,
-      last_update_server: Date.now(),
-    });
+      last_update_server: now,
+    };
+
+    const devIds = Array.from(new Set([deviceId, 'device_38A839E81F84', 'device_A4CB2F124B00', 'gateway'].filter(Boolean)));
+    for (const id of devIds) {
+      const devRef = ref(rtdb, `dispositivos/${id}`);
+      await update(devRef, payload).catch(() => {});
+    }
+
+    // Update root level alarm for quick Android listeners
+    const rootRef = ref(rtdb);
+    await update(rootRef, {
+      alarma: active,
+      buzzer: active,
+    }).catch(() => {});
   } catch (err) {
     console.warn('Error toggling alarm in RTDB:', err);
   }
@@ -553,15 +586,160 @@ export async function toggleGatewayAlarmInRTDB(deviceId: string, active: boolean
 
 export async function toggleGatewayLightInRTDB(deviceId: string, active: boolean): Promise<void> {
   try {
-    const devRef = ref(rtdb, `dispositivos/${deviceId}`);
-    await update(devRef, {
+    const now = Date.now();
+    const payload = {
       luz: active,
       iluminacion_led: active,
-      last_update_server: Date.now(),
-    });
+      last_update_server: now,
+    };
+
+    const devIds = Array.from(new Set([deviceId, 'device_38A839E81F84', 'device_A4CB2F124B00', 'gateway'].filter(Boolean)));
+    for (const id of devIds) {
+      const devRef = ref(rtdb, `dispositivos/${id}`);
+      await update(devRef, payload).catch(() => {});
+    }
+
+    const rootRef = ref(rtdb);
+    await update(rootRef, { luz: active }).catch(() => {});
   } catch (err) {
     console.warn('Error toggling light in RTDB:', err);
   }
 }
+
+// -------------------------------------------------------------
+// BROADCAST DRILL AND ALERTS FOR ANDROID APP & HARDWARE SYNC
+// -------------------------------------------------------------
+export async function broadcastDrillToRTDB(
+  active: boolean, 
+  drillType: string | null = 'gas_critico',
+  primaryDeviceId: string = 'device_38A839E81F84'
+): Promise<void> {
+  try {
+    const now = Date.now();
+    const devIds = Array.from(new Set([primaryDeviceId, 'device_38A839E81F84', 'device_A4CB2F124B00', 'gateway']));
+
+    if (active) {
+      const isGas = drillType === 'gas_critico';
+      const isPolvo = drillType === 'incendio_polvo';
+
+      const drillPayload = {
+        CO: isGas ? 1250 : 45,
+        PM2_5: isPolvo ? 650 : 25,
+        temperatura: isGas ? 31.4 : 24.5,
+        alarma: true,
+        buzzer: true,
+        luz: true,
+        iluminacion_led: true,
+        estado_adquisicion: 'simulacro',
+        simulacro_activo: true,
+        tipo_simulacro: drillType || 'gas_critico',
+        last_update_server: now,
+      };
+
+      for (const id of devIds) {
+        const devRef = ref(rtdb, `dispositivos/${id}`);
+        await update(devRef, drillPayload).catch(() => {});
+      }
+
+      // Root level broadcast for Android and ESP32
+      const rootRef = ref(rtdb);
+      await update(rootRef, {
+        alarma: true,
+        buzzer: true,
+        luz: true,
+        simulacro: {
+          activo: true,
+          tipo: drillType || 'gas_critico',
+          nombre: drillType === 'gas_critico' 
+            ? 'Simulacro de Fuga de Monóxido de Carbono (DS 132)'
+            : drillType === 'incendio_polvo'
+            ? 'Simulacro de Incendio y Humo Denso (DS 132)'
+            : 'Simulacro General de Evacuación Minera (DS 132)',
+          iniciadoPor: 'Consola Central MineSafe',
+          timestamp: now,
+        },
+        emergencia: {
+          activa: true,
+          esSimulacro: true,
+          tipo: drillType || 'gas_critico',
+          timestamp: now,
+        }
+      }).catch(() => {});
+    } else {
+      // Deactivate drill across all nodes
+      await resetGatewayDataInRTDB(primaryDeviceId);
+    }
+  } catch (err) {
+    console.warn('Error broadcasting drill to RTDB:', err);
+  }
+}
+
+export async function broadcastAlertToRTDB(alert: SafetyAlert): Promise<void> {
+  try {
+    const now = Date.now();
+    // 1. Store in RTDB /alertas
+    const alertRef = ref(rtdb, `alertas/${alert.id}`);
+    await set(alertRef, {
+      id: alert.id,
+      codigo: alert.code,
+      titulo: alert.title,
+      severidad: alert.severity,
+      variable: alert.variableName,
+      sensorId: alert.sensorId,
+      sensorCode: alert.sensorCode,
+      sector: alert.sectorName,
+      valor: alert.recordedValue,
+      limite: alert.safeLimit,
+      atendida: alert.acknowledged,
+      resuelta: alert.resolved,
+      accionSugerida: alert.suggestedAction,
+      timestamp: now,
+    });
+
+    // 2. If it's a critical alert, activate alarma and buzzer on RTDB devices so Android sounds siren
+    if (alert.severity === 'critico') {
+      const devIds = Array.from(new Set([alert.sensorId, 'device_38A839E81F84', 'gateway']));
+      for (const id of devIds) {
+        const devRef = ref(rtdb, `dispositivos/${id}`);
+        await update(devRef, {
+          alarma: true,
+          buzzer: true,
+          luz: true,
+          last_update_server: now,
+        }).catch(() => {});
+      }
+      const rootRef = ref(rtdb);
+      await update(rootRef, {
+        alarma: true,
+        buzzer: true,
+        luz: true,
+        alerta_activa: {
+          id: alert.id,
+          titulo: alert.title,
+          severidad: alert.severity,
+          sensor: alert.sensorCode,
+          timestamp: now,
+        }
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Error broadcasting alert to RTDB:', err);
+  }
+}
+
+export function subscribeToRTDBDrill(callback: (drillState: { active: boolean; type?: string; nombre?: string }) => void): () => void {
+  const simulacroRef = ref(rtdb, 'simulacro');
+  return onValue(simulacroRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const val = snapshot.val();
+      callback({
+        active: val?.activo === true,
+        type: val?.tipo,
+        nombre: val?.nombre,
+      });
+    }
+  });
+}
+
 
 

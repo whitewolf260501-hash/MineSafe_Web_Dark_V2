@@ -45,7 +45,10 @@ import {
   USER_RTDB_URL,
   toggleGatewayAlarmInRTDB,
   toggleGatewayLightInRTDB,
-  resetGatewayDataInRTDB
+  resetGatewayDataInRTDB,
+  broadcastDrillToRTDB,
+  broadcastAlertToRTDB,
+  subscribeToRTDBDrill
 } from './services/firebase';
 
 import { soundAlert } from './services/audioAlert';
@@ -89,6 +92,7 @@ export default function App() {
     let unsubDevices: (() => void) | null = null;
     let unsubUsers: (() => void) | null = null;
     let unsubRentals: (() => void) | null = null;
+    let unsubDrill: (() => void) | null = null;
 
     async function initRealtimeDatabase() {
       const connected = await testConnection();
@@ -120,6 +124,17 @@ export default function App() {
           setRentals(remoteRentals);
         }
       });
+
+      // Realtime listener for Drill & Emergency broadcasts (e.g., triggered from Android app)
+      unsubDrill = subscribeToRTDBDrill((drillState) => {
+        if (drillState.active) {
+          setIsDrillActive(true);
+          setDrillType((drillState.type as DrillType) || 'gas_critico');
+          setIsAlarmActive(true);
+          setIsLightActive(true);
+          setDismissEmergencyBanner(false);
+        }
+      });
     }
 
     initRealtimeDatabase();
@@ -128,6 +143,7 @@ export default function App() {
       if (unsubDevices) unsubDevices();
       if (unsubUsers) unsubUsers();
       if (unsubRentals) unsubRentals();
+      if (unsubDrill) unsubDrill();
     };
   }, []);
 
@@ -320,14 +336,15 @@ export default function App() {
     }));
   }, []);
 
-  const handleSimulateGasSpike = useCallback((sensorId: string) => {
+  const handleSimulateGasSpike = useCallback(async (sensorId: string) => {
     soundAlert.playCriticalAlert();
-    const targetDev = devices.find(d => d.id === sensorId);
+    const targetDev = devices.find(d => d.id === sensorId) || devices[0];
     if (!targetDev) return;
 
     const updatedDevice: SensorDevice = {
       ...targetDev,
       status: 'critico',
+      rawCO: 1250,
       metrics: {
         ...targetDev.metrics,
         co: 52.8,
@@ -336,7 +353,6 @@ export default function App() {
     };
 
     setDevices((prev) => prev.map(d => d.id === sensorId ? updatedDevice : d));
-    updateDeviceInRTDB(sensorId, { CO: 1500, temperatura: 31.4 });
 
     // Create a new safety alert
     const newAlert: SafetyAlert = {
@@ -348,7 +364,7 @@ export default function App() {
       sensorId: sensorId,
       sensorCode: targetDev.code,
       sectorName: targetDev.sectorName,
-      recordedValue: '52.8 ppm',
+      recordedValue: '52.8 ppm (1250 ADC)',
       safeLimit: '< 25.0 ppm',
       timestamp: 'Justo ahora',
       acknowledged: false,
@@ -357,9 +373,12 @@ export default function App() {
     };
 
     setAlerts((prev) => [newAlert, ...prev]);
+
+    // Broadcast alert to Firebase RTDB so Android App and hardware ESP32 immediately react
+    await broadcastAlertToRTDB(newAlert);
   }, [devices]);
 
-  const handleResetSensor = useCallback((sensorId: string) => {
+  const handleResetSensor = useCallback(async (sensorId: string) => {
     soundAlert.playFeedbackBeep();
     const targetDev = devices.find(d => d.id === sensorId);
     if (!targetDev) return;
@@ -367,6 +386,7 @@ export default function App() {
     const resetDevice: SensorDevice = {
       ...targetDev,
       status: 'normal',
+      rawCO: 45,
       metrics: {
         ...targetDev.metrics,
         co: 8.5,
@@ -375,10 +395,10 @@ export default function App() {
     };
 
     setDevices((prev) => prev.map(d => d.id === sensorId ? resetDevice : d));
-    updateDeviceInRTDB(sensorId, { CO: 12, temperatura: 22.4 });
+    await resetGatewayDataInRTDB(sensorId);
   }, [devices]);
 
-  const handleResetPageLevels = useCallback(() => {
+  const handleResetPageLevels = useCallback(async () => {
     soundAlert.playFeedbackBeep();
     soundAlert.stopContinuousAlarm();
     setIsAlarmActive(false);
@@ -393,7 +413,10 @@ export default function App() {
     
     // Reset variables to clean industrial baselines
     setVariables(INITIAL_VARIABLES);
-  }, []);
+
+    // Reset all nodes in Firebase RTDB
+    await resetGatewayDataInRTDB(activeTelemetryDeviceId);
+  }, [activeTelemetryDeviceId]);
 
   const handleTriggerSimulationEmergency = useCallback(async (type: DrillType) => {
     soundAlert.startContinuousAlarm();
@@ -412,13 +435,6 @@ export default function App() {
           rawCO: 1250,
           metrics: { ...d.metrics, co: 55.4 }
         } : d));
-        await updateDeviceInRTDB(dev.id, { 
-          CO: 1250, 
-          alarma: true, 
-          buzzer: true, 
-          luz: true, 
-          iluminacion_led: true 
-        });
       } else if (type === 'incendio_polvo') {
         setDevices(prev => prev.map(d => d.id === dev.id ? {
           ...d,
@@ -426,24 +442,7 @@ export default function App() {
           rawPM25: 650,
           metrics: { ...d.metrics, polvoPM: 650 }
         } : d));
-        await updateDeviceInRTDB(dev.id, { 
-          PM2_5: 650, 
-          alarma: true, 
-          buzzer: true, 
-          luz: true, 
-          iluminacion_led: true 
-        });
-      } else {
-        await updateDeviceInRTDB(dev.id, { 
-          alarma: true, 
-          buzzer: true, 
-          luz: true, 
-          iluminacion_led: true 
-        });
       }
-      // Activate both acoustic alarm/buzzer and strobe light/LED on ESP32 in RTDB
-      await toggleGatewayAlarmInRTDB(dev.id, true);
-      await toggleGatewayLightInRTDB(dev.id, true);
     }
 
     const titleMap: Record<DrillType, string> = {
@@ -458,8 +457,8 @@ export default function App() {
       title: titleMap[type],
       severity: 'critico',
       variableName: type === 'gas_critico' ? 'Monóxido de Carbono (CO)' : type === 'incendio_polvo' ? 'Polvo PM2.5' : 'Alarma General',
-      sensorId: dev?.id || 'sim-drill-01',
-      sensorCode: dev?.code || 'NODO-ESP32',
+      sensorId: dev?.id || 'device_38A839E81F84',
+      sensorCode: dev?.code || 'device_38A839E81F84',
       sectorName: dev?.sectorName || 'Mina Chuquicamata - Rampa Principal',
       recordedValue: type === 'gas_critico' ? '1250 ADC (55.4 ppm)' : type === 'incendio_polvo' ? '650 µg/m³' : 'Sirena y Baliza Activas',
       safeLimit: type === 'gas_critico' ? '< 25.0 ppm' : '< 50 µg/m³',
@@ -470,6 +469,10 @@ export default function App() {
     };
 
     setAlerts(prev => [newAlert, ...prev]);
+
+    // Broadcast drill to Firebase Realtime Database across all nodes:
+    // updates device_38A839E81F84 (monitored by Android APK), gateway, and root /simulacro
+    await broadcastDrillToRTDB(true, type, dev?.id || 'device_38A839E81F84');
   }, [devices, activeTelemetryDeviceId]);
 
   const handleStopDrill = useCallback(async () => {
@@ -483,9 +486,6 @@ export default function App() {
 
     const dev = devices.find(d => d.id === activeTelemetryDeviceId) || devices[0];
     if (dev) {
-      await toggleGatewayAlarmInRTDB(dev.id, false);
-      await toggleGatewayLightInRTDB(dev.id, false);
-      await resetGatewayDataInRTDB(dev.id);
       setDevices(prev => prev.map(d => d.id === dev.id ? {
         ...d,
         status: 'normal',
@@ -496,6 +496,9 @@ export default function App() {
     }
 
     setAlerts(prev => prev.map(a => a.id.startsWith('alt-drill-') ? { ...a, resolved: true, acknowledged: true } : a));
+
+    // Clear drill and reset all devices in Firebase Realtime Database
+    await broadcastDrillToRTDB(false, null, dev?.id || 'device_38A839E81F84');
   }, [devices, activeTelemetryDeviceId]);
 
   const handleToggleAlarm = useCallback(async () => {
