@@ -7,8 +7,11 @@ import { DevicesAndRentalsView } from './components/DevicesAndRentalsView';
 import { HistoricalReportsView } from './components/HistoricalReportsView';
 import { MiningSectorsView } from './components/MiningSectorsView';
 import { UsersManagementView } from './components/UsersManagementView';
+import { MineSafeAIView } from './components/MineSafeAIView';
 import { LoginModal } from './components/LoginModal';
 import { EmergencyModal, DrillType } from './components/EmergencyModal';
+import { recordRealTelemetryPoint } from './services/aiService';
+
 
 import { 
   NavigationTab, 
@@ -103,6 +106,17 @@ export default function App() {
         if (remoteDevices && remoteDevices.length > 0) {
           setDevices(remoteDevices);
           setIsFirebaseConnected(true);
+
+          // Alimentar el búfer de series temporales de MineSafe IA con datos reales
+          remoteDevices.forEach((dev) => {
+            recordRealTelemetryPoint(dev.id, {
+              coRaw: dev.rawCO,
+              pm25Raw: dev.rawPM25,
+              temperature: dev.rawTemp,
+              humidity: dev.rawHum,
+              timestamp: dev.lastUpdateServer && dev.lastUpdateServer > 0 ? dev.lastUpdateServer : Date.now(),
+            });
+          });
         }
       });
 
@@ -812,6 +826,15 @@ export default function App() {
               setSelectedSensorId(sensorId);
               setCurrentTab('monitoreo');
             }}
+          />
+        )}
+
+        {currentTab === 'ia' && (
+          <MineSafeAIView
+            devices={devices}
+            activeDeviceId={activeTelemetryDeviceId}
+            onSelectDevice={setActiveTelemetryDeviceId}
+            currentSite={currentSite}
           />
         )}
 

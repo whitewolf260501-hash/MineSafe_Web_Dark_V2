@@ -35,26 +35,30 @@ export const HistoricalReportsView: React.FC<HistoricalReportsViewProps> = ({
 
   const currentVar = variables.find(v => v.id === selectedVarId) || variables[0];
 
-  // Generate synthetic curve points for chosen time range
+  // Preferir puntos históricos reales almacenados en la variable de telemetría
   const generateSeries = () => {
-    const baseVal = currentVar.value;
-    const pointsCount = timeRange === '1h' ? 12 : timeRange === '6h' ? 18 : timeRange === '24h' ? 24 : 14;
-    const data: { label: string; value: number }[] = [];
-
-    for (let i = 0; i < pointsCount; i++) {
-      const variation = (Math.sin(i * 0.7) * (baseVal * 0.12)) + ((i % 3 === 0 ? 1 : -0.5) * (baseVal * 0.05));
-      const val = Math.max(0, Number((baseVal + variation).toFixed(1)));
-      const label = timeRange === '1h' ? `${i * 5}m` : timeRange === '6h' ? `${i * 20}m` : timeRange === '24h' ? `${i}:00` : `Día ${i + 1}`;
-      data.push({ label, value: val });
+    if (currentVar.historical && currentVar.historical.length >= 3) {
+      return currentVar.historical.map(h => ({
+        label: h.timestamp,
+        value: h.value
+      }));
     }
-    return data;
+    const baseVal = currentVar.value;
+    // Si no hay histórico acumulado suficiente, reflejar únicamente la lectura real actual
+    return [
+      { label: 'T-10m', value: Number(baseVal.toFixed(1)) },
+      { label: 'T-5m', value: Number(baseVal.toFixed(1)) },
+      { label: 'Ahora', value: Number(baseVal.toFixed(1)) },
+    ];
   };
 
   const series = generateSeries();
+  const isSufficientHistory = (currentVar.historical && currentVar.historical.length >= 3);
   const values = series.map(s => s.value);
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
   const avgVal = (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
+
 
   // SVG Chart Dimensions
   const width = 800;
@@ -285,6 +289,23 @@ export const HistoricalReportsView: React.FC<HistoricalReportsViewProps> = ({
               })}
             </svg>
           </div>
+
+          {/* Transparencia metrológica de la serie */}
+          {!isSufficientHistory ? (
+            <div className="p-3 bg-slate-950/70 rounded-lg border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>
+                  <strong>Aviso Metrológico:</strong> Ventana inicial basada en la lectura en vivo reportada por el sensor. No se sintetizan datos artificiales ni curvas senoidales ficticias para rellenar gráficos. Para análisis de series temporales y detección de anomalías (MAD), visite la pestaña <strong>MineSafe IA</strong>.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="p-2.5 bg-emerald-950/20 rounded-lg border border-emerald-800/40 text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Registros históricos reales acumulados desde la telemetría del nodo ESP32 / Gateway.</span>
+            </div>
+          )}
         </div>
 
       </div>

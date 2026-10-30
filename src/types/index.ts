@@ -152,7 +152,19 @@ export type NavigationTab =
   | 'dashboard'
   | 'monitoreo'
   | 'alertas'
+  | 'ia'
   | 'equipos'
   | 'reportes'
   | 'faenas'
   | 'usuarios';
+
+export type {
+  Observation,
+  AnalyzeRequest,
+  AnalyzeResponse,
+  MetricTrend,
+  Anomaly,
+  TrendDirection,
+  HealthResponse
+} from '../services/aiService';
+
