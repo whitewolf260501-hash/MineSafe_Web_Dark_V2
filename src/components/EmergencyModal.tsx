@@ -15,10 +15,13 @@ import {
   StopCircle,
   Crown,
   Shield,
-  Activity
+  Activity,
+  FileText,
+  CheckCircle2,
+  Edit3
 } from 'lucide-react';
 import { soundAlert } from '../services/audioAlert';
-import { UserProfile } from '../types';
+import { UserProfile, DrillDebriefRecord } from '../types';
 
 export type DrillType = 'gas_critico' | 'incendio_polvo' | 'evacuacion_sirena';
 
@@ -29,6 +32,7 @@ interface EmergencyModalProps {
   onTriggerSimulationEmergency?: (type: DrillType) => void;
   isSimulatingDrill?: boolean;
   onStopDrill?: () => void;
+  onSaveDrillDebrief?: (record: DrillDebriefRecord) => void;
 }
 
 export const EmergencyModal: React.FC<EmergencyModalProps> = ({
@@ -38,12 +42,22 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({
   onTriggerSimulationEmergency,
   isSimulatingDrill = false,
   onStopDrill,
+  onSaveDrillDebrief,
 }) => {
   const isAdminOrSuper = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
   const [modalTab, setModalTab] = useState<'simulacro' | 'real'>(isAdminOrSuper ? 'simulacro' : 'real');
   const [protocolStep, setProtocolStep] = useState<'confirm' | 'broadcasting' | 'active'>('confirm');
   const [selectedProtocol, setSelectedProtocol] = useState<'total' | 'galeria_sur' | 'gases'>('total');
   const [selectedDrillType, setSelectedDrillType] = useState<DrillType>('gas_critico');
+
+  // Debriefing / Cuadro de texto de cierre del simulacro
+  const [showDrillDebrief, setShowDrillDebrief] = useState<boolean>(false);
+  const [drillClassification, setDrillClassification] = useState<'simulacro_exitoso' | 'simulacro_con_observaciones' | 'falsa_alarma' | 'emergencia_real'>('simulacro_exitoso');
+  const [drillNotes, setDrillNotes] = useState<string>('');
+  const [drillActions, setDrillActions] = useState<string>('');
+  const [debriefSupervisor, setDebriefSupervisor] = useState<string>(currentUser?.name || 'Supervisor de Faena');
+  const [debriefSavedNotice, setDebriefSavedNotice] = useState<boolean>(false);
+
 
   const handleExecuteEvacuation = () => {
     setProtocolStep('broadcasting');
@@ -141,29 +155,156 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({
                 
                 {/* Status banner if drill is already active */}
                 {isSimulatingDrill ? (
-                  <div className="p-4 rounded-xl bg-amber-950/70 border border-amber-600/80 text-amber-200 space-y-3 animate-pulse">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-amber-400 animate-ping" />
-                      <span className="font-black text-sm uppercase text-white tracking-wide">
-                        ¡Simulacro de Emergencia en Progreso!
-                      </span>
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-xl bg-amber-950/70 border border-amber-600/80 text-amber-200 space-y-2 animate-pulse">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-amber-400 animate-ping" />
+                        <span className="font-black text-sm uppercase text-white tracking-wide">
+                          ¡Simulacro de Emergencia en Progreso!
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-200/90 leading-relaxed">
+                        El sistema está emitiendo lecturas críticas forzadas, sirenas de alerta y el banner de emergencia para entrenar la respuesta del personal minero según norma DS 132.
+                      </p>
                     </div>
-                    <p className="text-xs text-amber-200/90 leading-relaxed">
-                      El sistema está emitiendo lecturas críticas forzadas, sirenas de alerta y el banner superior de emergencia para entrenar la respuesta del personal minero según norma DS 132.
-                    </p>
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (onStopDrill) onStopDrill();
-                          soundAlert.playFeedbackBeep();
-                        }}
-                        className="w-full py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-colors"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Finalizar Simulacro y Restablecer Faena Normal
-                      </button>
-                    </div>
+
+                    {!showDrillDebrief ? (
+                      <div className="space-y-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDrillDebrief(true);
+                            soundAlert.playFeedbackBeep();
+                          }}
+                          className="w-full py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-950 transition-colors"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Finalizar Simulacro y Describir Resultado en Bitácora (DS 132)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onStopDrill) onStopDrill();
+                            soundAlert.playFeedbackBeep();
+                          }}
+                          className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors border border-slate-700"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Restablecer Faena Inmediatamente (Sin Bitácora)
+                        </button>
+                      </div>
+                    ) : (
+                      /* FORMULARIO DE EVALUACIÓN Y CUADRO DE TEXTO */
+                      <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-700 space-y-3.5 text-xs text-slate-200">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                          <span className="font-bold text-white flex items-center gap-1.5">
+                            <FileText className="w-4 h-4 text-cyan-400" />
+                            Bitácora de Cierre del Simulacro
+                          </span>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                            Informe Técnico Sernageomin
+                          </span>
+                        </div>
+
+                        {/* Clasificación */}
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1.5">
+                            1. Clasificación del Ejercicio:
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'simulacro_exitoso', label: 'Simulacro Exitoso', sub: 'Tiempos cumplidos sin novedades' },
+                              { id: 'simulacro_con_observaciones', label: 'Con Observaciones', sub: 'Retardos o fallas de comunicación' },
+                              { id: 'falsa_alarma', label: 'Falsa Alarma', sub: 'Activación accidental o no planificada' },
+                              { id: 'emergencia_real', label: 'Emergencia Verdadera', sub: 'Peligro real constatado' },
+                            ].map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => setDrillClassification(c.id as any)}
+                                className={`p-2 rounded-lg border text-left text-xs transition-colors ${
+                                  drillClassification === c.id
+                                    ? 'bg-cyan-950 text-cyan-200 border-cyan-500 font-bold ring-1 ring-cyan-500'
+                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                <span className="block">{c.label}</span>
+                                <span className="text-[9px] font-normal text-slate-500 block">{c.sub}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Cuadro de Texto de Descripción del Simulacro */}
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1">
+                            2. Descripción del Evento / Comportamiento de Cuadrillas: <span className="text-rose-400">*</span>
+                          </label>
+                          <textarea
+                            value={drillNotes}
+                            onChange={(e) => setDrillNotes(e.target.value)}
+                            rows={3}
+                            placeholder="Describa tiempos de evacuación registrados, respuesta del personal hacia refugios mineros, efectividad de ventilación forzada..."
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+
+                        {/* Cuadro de Medidas Correctivas */}
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-300 block mb-1">
+                            3. Medidas Correctivas / Mejoras Recomendadas:
+                          </label>
+                          <input
+                            type="text"
+                            value={drillActions}
+                            onChange={(e) => setDrillActions(e.target.value)}
+                            placeholder="Ej: Reprogramar entrenamiento de cuadrilla Bravo, sustitución de batería en sensor N°2..."
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+
+                        {/* Supervisor */}
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                          <span>Supervisor responsable: <strong className="text-white">{debriefSupervisor}</strong></span>
+                          <span>Fecha: {new Date().toLocaleDateString('es-CL')}</span>
+                        </div>
+
+                        {/* Botones de confirmación */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => setShowDrillDebrief(false)}
+                            className="w-1/3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg"
+                          >
+                            Volver
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onSaveDrillDebrief) {
+                                onSaveDrillDebrief({
+                                  id: `DEBRIEF-${Date.now().toString().slice(-6)}`,
+                                  drillType: selectedDrillType,
+                                  classification: drillClassification,
+                                  notes: drillNotes.trim() || 'Simulacro finalizado según protocolo de contingencia minera DS 132.',
+                                  correctiveActions: drillActions.trim(),
+                                  supervisorName: debriefSupervisor,
+                                  timestamp: Date.now(),
+                                });
+                              }
+                              if (onStopDrill) onStopDrill();
+                              soundAlert.playFeedbackBeep();
+                              setShowDrillDebrief(false);
+                            }}
+                            className="w-2/3 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-md shadow-emerald-950 flex items-center justify-center gap-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Guardar Bitácora y Restablecer
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <>

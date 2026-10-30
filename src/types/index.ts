@@ -83,6 +83,30 @@ export interface MiningSite {
   activeSectors: MiningSector[];
 }
 
+export type AlertResolutionType = 
+  | 'emergencia_real' 
+  | 'simulacro' 
+  | 'falsa_alarma_sensor' 
+  | 'prueba_operativa';
+
+export interface AlertResolutionDetails {
+  resolutionType: AlertResolutionType;
+  comment: string;
+  correctiveActions?: string;
+  resolvedBy: string;
+  resolvedAt: string;
+}
+
+export interface DrillDebriefRecord {
+  id: string;
+  drillType: string;
+  classification: 'simulacro_exitoso' | 'simulacro_con_observaciones' | 'falsa_alarma' | 'emergencia_real';
+  notes: string;
+  correctiveActions?: string;
+  supervisorName: string;
+  timestamp: number;
+}
+
 export interface SafetyAlert {
   id: string;
   code: string;
@@ -99,7 +123,9 @@ export interface SafetyAlert {
   acknowledgedBy?: string;
   resolved: boolean;
   suggestedAction: string;
+  resolutionDetails?: AlertResolutionDetails;
 }
+
 
 export interface DeviceRental {
   id: string;

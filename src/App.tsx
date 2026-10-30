@@ -22,7 +22,9 @@ import {
   WorkerAssignment, 
   MiningSite, 
   UserProfile,
-  UserRole
+  UserRole,
+  AlertResolutionDetails,
+  DrillDebriefRecord
 } from './types';
 
 import { 
@@ -51,7 +53,9 @@ import {
   resetGatewayDataInRTDB,
   broadcastDrillToRTDB,
   broadcastAlertToRTDB,
-  subscribeToRTDBDrill
+  subscribeToRTDBDrill,
+  resolveAlertInRTDB,
+  saveDrillDebriefInRTDB
 } from './services/firebase';
 
 import { soundAlert } from './services/audioAlert';
@@ -337,6 +341,28 @@ export default function App() {
       )
     );
   }, []);
+
+  const handleResolveAlertWithDetails = useCallback(async (alertId: string, details: AlertResolutionDetails) => {
+    soundAlert.playFeedbackBeep();
+    setAlerts((prev) =>
+      prev.map((a) =>
+        a.id === alertId
+          ? {
+              ...a,
+              resolved: true,
+              acknowledged: true,
+              resolutionDetails: details,
+            }
+          : a
+      )
+    );
+    await resolveAlertInRTDB(alertId, details);
+  }, []);
+
+  const handleSaveDrillDebrief = useCallback(async (record: DrillDebriefRecord) => {
+    await saveDrillDebriefInRTDB(record);
+  }, []);
+
 
   const handleTriggerForcedVentilation = useCallback((sectorName: string) => {
     soundAlert.playFeedbackBeep();
@@ -818,8 +844,10 @@ export default function App() {
         {currentTab === 'alertas' && (
           <AlertsView
             alerts={alerts}
+            currentUser={currentUser}
             onAcknowledgeAlert={handleAcknowledgeAlert}
             onResolveAlert={handleResolveAlert}
+            onResolveAlertWithDetails={handleResolveAlertWithDetails}
             onTriggerForcedVentilation={handleTriggerForcedVentilation}
             onNavigateTab={setCurrentTab}
             onSelectSensor={(sensorId) => {
@@ -910,6 +938,7 @@ export default function App() {
           onTriggerSimulationEmergency={handleTriggerSimulationEmergency}
           isSimulatingDrill={isDrillActive}
           onStopDrill={handleStopDrill}
+          onSaveDrillDebrief={handleSaveDrillDebrief}
         />
       )}
 

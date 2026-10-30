@@ -526,6 +526,30 @@ export const INITIAL_ALERTS: SafetyAlert[] = [
     resolved: false,
     suggestedAction: 'Enviar cuadrilla electromecánica para sustitución de batería o revisión de gateway repetidor.',
   },
+  {
+    id: 'alt-004',
+    code: 'ALT-SIM-001',
+    title: 'Simulacro de Contingencia por Gases Tóxicos (DS 132)',
+    severity: 'advertencia',
+    variableName: 'Monóxido de Carbono (MQ-2)',
+    sensorId: 'device_38A839E81F84',
+    sensorCode: 'device_38A839E81F84',
+    sectorName: 'Mina Chuquicamata - Rampa Principal',
+    recordedValue: '1250 ADC (Simulado)',
+    safeLimit: '< 300 ADC',
+    timestamp: 'Hoy 11:30',
+    acknowledged: true,
+    acknowledgedBy: 'Manuel Crisostomo',
+    resolved: true,
+    suggestedAction: 'Protocolo de evacuación hacia refugios mineros y repliegue ordenado.',
+    resolutionDetails: {
+      resolutionType: 'simulacro',
+      comment: 'Ejercicio programado de evacuación de faena subterránea. Todo el personal del sector Rampa Principal evacuó hacia el refugio hermético en 4 minutos y 20 segundos.',
+      correctiveActions: 'Se verificó la activación de la baliza y sirena del ESP32. Se evaluó satisfactoriamente la respuesta de las cuadrillas.',
+      resolvedBy: 'Manuel Crisostomo (SuperAdmin)',
+      resolvedAt: '29/10/2026, 11:45',
+    },
+  },
 ];
 
 export const INITIAL_RENTALS: DeviceRental[] = [

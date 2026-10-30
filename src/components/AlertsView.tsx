@@ -11,16 +11,24 @@ import {
   Volume2, 
   ArrowRight,
   ExternalLink,
-  ShieldCheck,
-  Search
+  Search,
+  Edit3,
+  FileText,
+  CheckCircle2,
+  Flame,
+  Cpu,
+  Wrench
 } from 'lucide-react';
-import { SafetyAlert, AlertSeverity, NavigationTab } from '../types';
+import { SafetyAlert, AlertSeverity, NavigationTab, AlertResolutionDetails, UserProfile } from '../types';
 import { soundAlert } from '../services/audioAlert';
+import { AlertResolutionModal } from './AlertResolutionModal';
 
 interface AlertsViewProps {
   alerts: SafetyAlert[];
+  currentUser?: UserProfile | null;
   onAcknowledgeAlert: (alertId: string) => void;
   onResolveAlert: (alertId: string) => void;
+  onResolveAlertWithDetails?: (alertId: string, details: AlertResolutionDetails) => void;
   onTriggerForcedVentilation: (sectorName: string) => void;
   onNavigateTab: (tab: NavigationTab) => void;
   onSelectSensor: (sensorId: string) => void;
@@ -28,8 +36,10 @@ interface AlertsViewProps {
 
 export const AlertsView: React.FC<AlertsViewProps> = ({
   alerts,
+  currentUser,
   onAcknowledgeAlert,
   onResolveAlert,
+  onResolveAlertWithDetails,
   onTriggerForcedVentilation,
   onNavigateTab,
   onSelectSensor,
@@ -37,6 +47,8 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'active' | 'resolved' | 'all'>('active');
   const [searchQuery, setSearchQuery] = useState('');
+  const [alertToResolve, setAlertToResolve] = useState<SafetyAlert | null>(null);
+
 
   const filteredAlerts = alerts.filter((alert) => {
     const matchesSeverity = filterSeverity === 'all' || alert.severity === filterSeverity;
@@ -276,6 +288,59 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
                 </div>
               </div>
 
+              {/* Row 3.5: Bitácora de Cierre y Descripción de Resolución (si está resuelta) */}
+              {alert.resolutionDetails && (
+                <div className="p-3 rounded-lg bg-slate-950/90 border border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span className="font-bold text-slate-200">Bitácora de Cierre de Contingencia (DS 132):</span>
+                    </div>
+
+                    {/* Insignia de Clasificación */}
+                    {alert.resolutionDetails.resolutionType === 'emergencia_real' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-bold text-[11px] bg-rose-950 text-rose-300 border border-rose-700">
+                        <Flame className="w-3 h-3 text-rose-400" />
+                        EMERGENCIA REAL (VERDADERA)
+                      </span>
+                    )}
+                    {alert.resolutionDetails.resolutionType === 'simulacro' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-bold text-[11px] bg-amber-950 text-amber-300 border border-amber-700">
+                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                        SIMULACRO PROGRAMADO
+                      </span>
+                    )}
+                    {alert.resolutionDetails.resolutionType === 'falsa_alarma_sensor' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-bold text-[11px] bg-cyan-950 text-cyan-300 border border-cyan-700">
+                        <Cpu className="w-3 h-3 text-cyan-400" />
+                        FALSA ALARMA (FALLA TÉCNICA)
+                      </span>
+                    )}
+                    {alert.resolutionDetails.resolutionType === 'prueba_operativa' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded font-bold text-[11px] bg-emerald-950 text-emerald-300 border border-emerald-700">
+                        <Wrench className="w-3 h-3 text-emerald-400" />
+                        PRUEBA OPERATIVA / MANTENCIÓN
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-slate-300 bg-slate-900/80 p-2.5 rounded border border-slate-800/80 italic leading-relaxed">
+                    "{alert.resolutionDetails.comment}"
+                  </p>
+
+                  {alert.resolutionDetails.correctiveActions && (
+                    <div className="text-[11px] text-slate-400">
+                      <strong className="text-slate-300 font-semibold">Medidas Adoptadas:</strong> {alert.resolutionDetails.correctiveActions}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60 font-mono">
+                    <span>Supervisor a cargo: <strong className="text-slate-200">{alert.resolutionDetails.resolvedBy}</strong></span>
+                    <span>Cierre: {alert.resolutionDetails.resolvedAt}</span>
+                  </div>
+                </div>
+              )}
+
               {/* Row 4: Action Buttons */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
                 <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -321,14 +386,23 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
                     </button>
                   )}
 
-                  {/* Resolve button */}
-                  {!alert.resolved && (
+                  {/* Resolve button (Opens modal to classify and write description) */}
+                  {!alert.resolved ? (
                     <button
-                      onClick={() => onResolveAlert(alert.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg transition-colors"
+                      onClick={() => setAlertToResolve(alert)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-sm"
                     >
                       <CheckCircle className="w-3.5 h-3.5" />
-                      Dar por Resuelta
+                      Describir y Dar por Resuelta
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setAlertToResolve(alert)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg transition-colors"
+                      title="Editar o complementar descripción en la bitácora"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                      Editar Bitácora
                     </button>
                   )}
                 </div>
@@ -338,6 +412,24 @@ export const AlertsView: React.FC<AlertsViewProps> = ({
           ))
         )}
       </div>
+
+      {/* Modal para Clasificar y Describir la Alerta */}
+      {alertToResolve && (
+        <AlertResolutionModal
+          alert={alertToResolve}
+          currentUser={currentUser}
+          onClose={() => setAlertToResolve(null)}
+          onConfirmResolution={(alertId, details) => {
+            if (onResolveAlertWithDetails) {
+              onResolveAlertWithDetails(alertId, details);
+            } else {
+              onResolveAlert(alertId);
+            }
+            soundAlert.playFeedbackBeep();
+            setAlertToResolve(null);
+          }}
+        />
+      )}
 
     </div>
   );

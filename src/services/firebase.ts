@@ -20,7 +20,9 @@ import {
   UserProfile, 
   DeviceRental,
   UserRole,
-  SafetyAlert
+  SafetyAlert,
+  AlertResolutionDetails,
+  DrillDebriefRecord
 } from '../types';
 
 export const USER_RTDB_URL = "https://minefase-fc5f5-default-rtdb.firebaseio.com/";
@@ -739,6 +741,61 @@ export function subscribeToRTDBDrill(callback: (drillState: { active: boolean; t
       });
     }
   });
+}
+
+/**
+ * Registra el cierre y clasificación de una alerta en Firebase RTDB
+ * Guarda si fue una emergencia real, simulacro, falla de sensor o prueba operativa,
+ * junto con la descripción y medidas adoptadas por el usuario/supervisor.
+ */
+export async function resolveAlertInRTDB(alertId: string, details: AlertResolutionDetails): Promise<void> {
+  try {
+    const alertRef = ref(rtdb, `alertas/${alertId}`);
+    await update(alertRef, {
+      resuelta: true,
+      atendida: true,
+      tipo_resolucion: details.resolutionType,
+      descripcion_cierre: details.comment,
+      acciones_correctivas: details.correctiveActions || '',
+      resuelto_por: details.resolvedBy,
+      resuelto_en: details.resolvedAt,
+      timestamp_cierre: Date.now(),
+    });
+
+    // Guardar copia histórica en la bitácora de contingencias
+    const bitacoraRef = ref(rtdb, `bitacora_contingencias/${alertId}`);
+    await set(bitacoraRef, {
+      idAlerta: alertId,
+      tipoResolucion: details.resolutionType,
+      descripcion: details.comment,
+      accionesCorrectivas: details.correctiveActions || '',
+      supervisor: details.resolvedBy,
+      fecha: details.resolvedAt,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.warn('Error saving alert resolution to RTDB:', err);
+  }
+}
+
+/**
+ * Registra la bitácora de evaluación y observaciones de un simulacro finalizado
+ */
+export async function saveDrillDebriefInRTDB(record: DrillDebriefRecord): Promise<void> {
+  try {
+    const debriefRef = ref(rtdb, `simulacros_bitacora/${record.id}`);
+    await set(debriefRef, {
+      id: record.id,
+      tipoSimulacro: record.drillType,
+      clasificacion: record.classification,
+      observaciones: record.notes,
+      accionesCorrectivas: record.correctiveActions || '',
+      supervisor: record.supervisorName,
+      timestamp: record.timestamp,
+    });
+  } catch (err) {
+    console.warn('Error saving drill debrief to RTDB:', err);
+  }
 }
 
 
